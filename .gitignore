@@ -34,3 +34,8 @@ build/
 mvnw.cmd
 mvnw
 .mvn/wrapper/maven-wrapper.properties
+
+### Logs ###
+logs/
+*.log
+debug.log
