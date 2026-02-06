@@ -1,0 +1,45 @@
+# Maven
+target/
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+AGENTS.md
+README.md
+
+# Test files
+src/test/
+
+# Logs
+logs/
+*.log
+
+# Data files
+data/
+storage/
+
+# Postman (not needed in container)
+postman/
+
+# Other
+.DS_Store
+*.swp
+*.swo
+*~

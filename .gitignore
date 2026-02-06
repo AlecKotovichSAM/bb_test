@@ -39,3 +39,4 @@ mvnw
 logs/
 *.log
 debug.log
+/data/

@@ -44,6 +44,61 @@ class MyControllerIntegrationTest {
 
 ---
 
+## TestRestTemplate для E2E тестов
+
+### Важно: Правильный импорт
+
+В этом проекте используется **специфичный импорт** для `TestRestTemplate` в E2E тестах:
+
+```java
+import org.springframework.boot.resttestclient.TestRestTemplate;
+```
+
+**НЕ использовать:**
+```java
+import org.springframework.boot.test.web.client.TestRestTemplate;  // НЕПРАВИЛЬНО
+```
+
+### Контекст
+
+Проект использует Spring Boot 4.0.2, где структура пакетов для тестирования изменилась. 
+Правильный пакет для `TestRestTemplate` в Spring Boot 4.x:
+- `org.springframework.boot.resttestclient.TestRestTemplate`
+
+### Использование в E2E тестах
+
+**ВАЖНО:** В Spring Boot 4.x `TestRestTemplate` не создается автоматически как bean, поэтому его нужно создавать вручную:
+
+```java
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
+public abstract class BaseE2ETest {
+    @LocalServerPort protected int port;
+    protected final TestRestTemplate http = new TestRestTemplate();  // Создается вручную, НЕ через @Autowired
+    
+    // методы для HTTP запросов...
+}
+```
+
+**НЕ использовать:**
+```java
+@Autowired protected TestRestTemplate http;  // НЕПРАВИЛЬНО - bean не существует
+```
+
+### Зависимости
+
+Для работы `TestRestTemplate` требуется:
+- `spring-boot-starter-test` (базовые тестовые зависимости)
+- `spring-boot-starter-restclient-test` (специфичная зависимость для TestRestTemplate в Spring Boot 4.x)
+- `spring-boot-starter-webmvc-test` (дополнительные тестовые зависимости)
+
+**ВАЖНО:** В Spring Boot 4.x `TestRestTemplate` создается вручную, а не через `@Autowired`:
+```java
+protected final TestRestTemplate http = new TestRestTemplate();
+```
+
+---
+
 ## Другие важные заметки
 
 ### ObjectMapper в тестах

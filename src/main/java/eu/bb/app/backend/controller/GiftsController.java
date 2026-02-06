@@ -65,7 +65,20 @@ public class GiftsController {
             @Parameter(description = "ID подарка", required = true) @PathVariable Long id, 
             @RequestBody Gift g) {
         log.info("Updating gift ID: {}", id);
-        g.setId(id); 
+        Gift existing = gifts.findById(id).orElseThrow(() -> {
+            log.warn("Gift not found for update: {}", id);
+            return new RuntimeException("Gift not found");
+        });
+        // Сохраняем eventId из существующего подарка
+        g.setId(id);
+        g.setEventId(existing.getEventId());
+        // Сохраняем статус и reservedByGuest, если они не переданы
+        if (g.getStatus() == null) {
+            g.setStatus(existing.getStatus());
+        }
+        if (g.getReservedByGuest() == null) {
+            g.setReservedByGuest(existing.getReservedByGuest());
+        }
         Gift updated = gifts.save(g);
         log.info("Gift updated successfully: ID={}, title={}", updated.getId(), updated.getTitle());
         return updated;
