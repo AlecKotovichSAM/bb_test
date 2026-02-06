@@ -1,6 +1,6 @@
 {
   "id": "bb-e2e-env",
-  "name": "BirthdayBuddy Local",
+  "name": "BB Local",
   "values": [
     {
       "key": "baseUrl",
