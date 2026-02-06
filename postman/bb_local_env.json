@@ -1,0 +1,11 @@
+{
+  "id": "bb-e2e-env",
+  "name": "BirthdayBuddy Local",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "enabled": true
+    }
+  ]
+}
