@@ -10,7 +10,7 @@ COPY src ./src
 
 RUN mvn clean package && mv target/backend-*.jar target/backend.jar
 
-FROM eclipse-temurin:25-jammy
+FROM eclipse-temurin:25-jdk
 
 COPY --from=build /artifacts/target/backend.jar /app/backend.jar
 
