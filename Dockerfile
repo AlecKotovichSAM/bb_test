@@ -22,7 +22,9 @@ COPY --from=build /artifacts/target/backend.jar /app/backend.jar
 
 WORKDIR /app
 
-RUN chown -R appuser:appuser /app
+# Создаем папку для базы данных и настраиваем права доступа
+RUN mkdir -p /app/data && \
+    chown -R appuser:appuser /app
 
 USER appuser
 
@@ -30,5 +32,8 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
+
+# Используем переменную окружения для пути к базе данных в Docker
+ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/bb;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
 
 ENTRYPOINT [ "java", "-jar", "backend.jar" ]
