@@ -19,11 +19,13 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /artifacts/target/backend.jar /app/backend.jar
+# Копируем миграции отдельно для доступа через filesystem (альтернатива classpath)
+COPY --from=build /artifacts/src/main/resources/db/migration /app/db/migration
 
 WORKDIR /app
 
-# Создаем папку для базы данных и настраиваем права доступа
-RUN mkdir -p /app/data && \
+# Создаем папки и настраиваем права доступа
+RUN mkdir -p /app/data /app/db && \
     chown -R appuser:appuser /app
 
 USER appuser
@@ -36,6 +38,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # Используем переменные окружения для настройки в Docker
 ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/bb;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
 # Настройки Flyway для Docker:
+# Используем filesystem путь для миграций, так как Spring Boot Loader может не находить classpath ресурсы
+ENV SPRING_FLYWAY_LOCATIONS=filesystem:/app/db/migration
 # baseline-on-migrate создает baseline для существующей базы без истории миграций
 ENV SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
 # repair-on-migrate исправляет состояние истории миграций при запуске (исправляет несоответствия)
