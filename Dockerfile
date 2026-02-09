@@ -4,8 +4,6 @@ WORKDIR /artifacts
 
 COPY pom.xml .
 
-RUN mvn dependency:go-offline
-
 COPY src ./src
 
 RUN mvn clean package && mv target/backend-*.jar target/backend.jar
