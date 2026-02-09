@@ -8,6 +8,10 @@ RUN mvn dependency:go-offline
 
 COPY src ./src
 
+# Сохраняем миграции в отдельную папку перед сборкой
+RUN mkdir -p target/migrations/db && \
+    cp -r src/main/resources/db/migration target/migrations/db/ 2>/dev/null || true
+
 RUN mvn clean package && \
     mv target/backend-*.jar target/backend.jar 2>/dev/null || \
     (JAR_FILE=$(ls target/backend-*.jar | grep -v sources | head -1) && mv "$JAR_FILE" target/backend.jar)
@@ -19,13 +23,13 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /artifacts/target/backend.jar /app/backend.jar
-# Копируем миграции отдельно для доступа через filesystem (альтернатива classpath)
-COPY --from=build /artifacts/src/main/resources/db/migration /app/db/migration
+# Копируем миграции из сохраненной папки
+COPY --from=build /artifacts/target/migrations/db/migration /app/db/migration
 
 WORKDIR /app
 
 # Создаем папки и настраиваем права доступа
-RUN mkdir -p /app/data /app/db && \
+RUN mkdir -p /app/data /app/db/migration && \
     chown -R appuser:appuser /app
 
 USER appuser
