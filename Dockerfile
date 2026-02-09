@@ -33,7 +33,14 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-# Используем переменную окружения для пути к базе данных в Docker
+# Используем переменные окружения для настройки в Docker
 ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/bb;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+# Настройки Flyway для Docker:
+# baseline-on-migrate создает baseline для существующей базы без истории миграций
+ENV SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+# repair-on-migrate исправляет состояние истории миграций при запуске (исправляет несоответствия)
+ENV SPRING_FLYWAY_REPAIR_ON_MIGRATE=true
+# Логирование Flyway для диагностики
+ENV LOGGING_LEVEL_ORG_FLYWAYDB=DEBUG
 
 ENTRYPOINT [ "java", "-jar", "backend.jar" ]
