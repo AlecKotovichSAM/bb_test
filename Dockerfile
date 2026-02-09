@@ -8,10 +8,6 @@ RUN mvn dependency:go-offline
 
 COPY src ./src
 
-# Сохраняем миграции в отдельную папку перед сборкой
-RUN mkdir -p target/migrations/db && \
-    cp -r src/main/resources/db/migration target/migrations/db/ 2>/dev/null || true
-
 RUN mvn clean package && \
     mv target/backend-*.jar target/backend.jar 2>/dev/null || \
     (JAR_FILE=$(ls target/backend-*.jar | grep -v sources | head -1) && mv "$JAR_FILE" target/backend.jar)
@@ -23,13 +19,10 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /artifacts/target/backend.jar /app/backend.jar
-# Копируем миграции из сохраненной папки
-COPY --from=build /artifacts/target/migrations/db/migration /app/db/migration
 
 WORKDIR /app
 
-# Создаем папки и настраиваем права доступа
-RUN mkdir -p /app/data /app/db/migration && \
+RUN mkdir -p /app/data && \
     chown -R appuser:appuser /app
 
 USER appuser
@@ -39,16 +32,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/actuator/health || exit 1
 
-# Используем переменные окружения для настройки в Docker
 ENV SPRING_DATASOURCE_URL=jdbc:h2:file:/app/data/bb;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
-# Настройки Flyway для Docker:
-# Используем filesystem путь для миграций, так как Spring Boot Loader может не находить classpath ресурсы
-ENV SPRING_FLYWAY_LOCATIONS=filesystem:/app/db/migration
-# baseline-on-migrate создает baseline для существующей базы без истории миграций
 ENV SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
-# repair-on-migrate исправляет состояние истории миграций при запуске (исправляет несоответствия)
-ENV SPRING_FLYWAY_REPAIR_ON_MIGRATE=true
-# Логирование Flyway для диагностики
-ENV LOGGING_LEVEL_ORG_FLYWAYDB=DEBUG
 
 ENTRYPOINT [ "java", "-jar", "backend.jar" ]
