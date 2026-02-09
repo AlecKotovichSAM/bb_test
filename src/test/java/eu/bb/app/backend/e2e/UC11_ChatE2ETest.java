@@ -29,7 +29,9 @@ class UC11_ChatE2ETest extends BaseE2ETest {
         ev.put("locationType", "manual");
         ev.put("location", "Berlin");
         ev.put("status", "Planned");
-        Long eventId = ((Number) POST("/api/events", ev, Map.class).getBody().get("id")).longValue();
+        Map<String,Object> eventResponse = (Map<String,Object>) POST("/api/events", ev, Map.class).getBody();
+        Map<String,Object> event = (Map<String,Object>) eventResponse.get("event");
+        Long eventId = ((Number) event.get("id")).longValue();
 
         Map<String,Object> m = new HashMap<>();
         m.put("userId", uid);

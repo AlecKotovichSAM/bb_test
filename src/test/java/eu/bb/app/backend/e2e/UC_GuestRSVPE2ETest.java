@@ -29,7 +29,9 @@ class UC_GuestRSVPE2ETest extends BaseE2ETest {
         ev.put("locationType", "manual");
         ev.put("location", "Berlin");
         ev.put("status", "Draft");
-        Long eventId = ((Number) POST("/api/events", ev, Map.class).getBody().get("id")).longValue();
+        Map<String,Object> eventResponse = (Map<String,Object>) POST("/api/events", ev, Map.class).getBody();
+        Map<String,Object> event = (Map<String,Object>) eventResponse.get("event");
+        Long eventId = ((Number) event.get("id")).longValue();
         
         Map<String,Object> guest = new HashMap<>();
         guest.put("guestName", "Laura");

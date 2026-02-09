@@ -29,7 +29,9 @@ class UC05_CancelEventE2ETest extends BaseE2ETest {
         ev.put("locationType", "manual");
         ev.put("location", "Berlin");
         ev.put("status", "Draft");
-        Long eventId = ((Number) POST("/api/events", ev, Map.class).getBody().get("id")).longValue();
+        Map<String,Object> eventResponse = (Map<String,Object>) POST("/api/events", ev, Map.class).getBody();
+        Map<String,Object> event = (Map<String,Object>) eventResponse.get("event");
+        Long eventId = ((Number) event.get("id")).longValue();
 
         ResponseEntity<Map> rc = POST("/api/events/"+eventId+"/cancel", new HashMap<>(), Map.class);
         assertThat(rc.getStatusCode()).isEqualTo(HttpStatus.OK);
