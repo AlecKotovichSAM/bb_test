@@ -13,7 +13,6 @@ public class Child {
     private String firstName;
     private LocalDate birthday;
     private String gender;
-    private String avatar;
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getUserId() { return userId; }
@@ -24,6 +23,4 @@ public class Child {
     public void setBirthday(LocalDate birthday) { this.birthday = birthday; }
     public String getGender() { return gender; }
     public void setGender(String gender) { this.gender = gender; }
-    public String getAvatar() { return avatar; }
-    public void setAvatar(String avatar) { this.avatar = avatar; }
 }

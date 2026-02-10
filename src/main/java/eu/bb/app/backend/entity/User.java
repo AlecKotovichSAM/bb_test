@@ -12,10 +12,6 @@ public class User {
     private String email;
     private String address;
     
-    @Lob
-    @Column(columnDefinition = "CLOB")
-    private String avatar; // Base64 строка: data:image/jpeg;base64,... или data:image/png;base64,...
-    
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getFirstName() { return firstName; }
@@ -26,6 +22,4 @@ public class User {
     public void setEmail(String email) { this.email = email; }
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
-    public String getAvatar() { return avatar; }
-    public void setAvatar(String avatar) { this.avatar = avatar; }
 }

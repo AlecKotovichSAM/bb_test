@@ -1,7 +1,9 @@
 package eu.bb.app.backend.controller;
 
 import eu.bb.app.backend.entity.User;
+import eu.bb.app.backend.entity.UserAvatar;
 import eu.bb.app.backend.repository.UserRepository;
+import eu.bb.app.backend.repository.UserAvatarRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -23,8 +25,12 @@ import java.util.Base64;
 public class UsersController {
     private static final Logger log = LoggerFactory.getLogger(UsersController.class);
     private final UserRepository repo;
+    private final UserAvatarRepository avatarRepository;
     
-    public UsersController(UserRepository repo) { this.repo = repo; }
+    public UsersController(UserRepository repo, UserAvatarRepository avatarRepository) { 
+        this.repo = repo; 
+        this.avatarRepository = avatarRepository;
+    }
     
     @GetMapping
     @Operation(summary = "Получить всех пользователей", description = "Возвращает список всех зарегистрированных пользователей")
@@ -71,7 +77,7 @@ public class UsersController {
     }
     
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить пользователя", description = "Обновляет информацию о существующем пользователе. Можно обновить аватар через поле avatar (base64 строка)")
+    @Operation(summary = "Обновить пользователя", description = "Обновляет информацию о существующем пользователе")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Пользователь успешно обновлен"),
         @ApiResponse(responseCode = "404", description = "Пользователь не найден")
@@ -82,11 +88,6 @@ public class UsersController {
             log.warn("User not found with ID: {}", id);
             return new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         });
-        
-        // Сохраняем существующий аватар, если новый не указан
-        if (u.getAvatar() == null) {
-            u.setAvatar(existing.getAvatar());
-        }
         
         u.setId(id);
         User updated = repo.save(u);
@@ -127,18 +128,22 @@ public class UsersController {
             if (!avatar.startsWith("data:image/")) {
                 log.warn("Invalid avatar format for user ID: {}. Expected format: data:image/jpeg;base64,... or data:image/png;base64,...", id);
             }
-            user.setAvatar(avatar);
-            repo.save(user);
+            
+            // Находим существующий аватар или создаем новый
+            UserAvatar userAvatar = avatarRepository.findByUserId(id)
+                    .orElse(new UserAvatar());
+            userAvatar.setUserId(id);
+            userAvatar.setAvatar(avatar);
+            avatarRepository.save(userAvatar);
             log.info("Avatar updated successfully for user ID: {}", id);
         } else {
             // Если avatar пустой или null - удаляем аватар
-            user.setAvatar(null);
-            repo.save(user);
+            avatarRepository.deleteByUserId(id);
             log.info("Avatar removed for user ID: {}", id);
         }
         
         Map<String, String> response = new HashMap<>();
-        response.put("avatar", user.getAvatar());
+        response.put("avatar", avatar != null ? avatar : "");
         return response;
     }
     
@@ -156,12 +161,13 @@ public class UsersController {
             return new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         });
         
-        if (user.getAvatar() == null || user.getAvatar().isEmpty()) {
-            log.debug("Avatar not set for user ID: {}", id);
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
-        }
+        UserAvatar userAvatar = avatarRepository.findByUserId(id)
+                .orElseThrow(() -> {
+                    log.debug("Avatar not set for user ID: {}", id);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Avatar not found");
+                });
         
-        String avatarDataUri = user.getAvatar();
+        String avatarDataUri = userAvatar.getAvatar();
         
         // Определяем Content-Type и извлекаем base64 данные из data URI
         MediaType contentType = MediaType.IMAGE_JPEG; // по умолчанию
