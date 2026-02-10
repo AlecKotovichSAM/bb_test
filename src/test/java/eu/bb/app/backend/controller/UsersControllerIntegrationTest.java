@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -242,6 +245,227 @@ class UsersControllerIntegrationTest {
                 .extracting(User::getId)
                 .doesNotContain(0L)
                 .doesNotHaveDuplicates();
+    }
+
+    @Test
+    void testCreateUser_WithAvatar() throws Exception {
+        // Given
+        User user = new User();
+        user.setFirstName("John");
+        user.setLastName("Doe");
+        user.setEmail("john.avatar@example.com");
+        user.setAddress("123 Main St");
+        String avatarBase64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A";
+        user.setAvatar(avatarBase64);
+
+        // When & Then
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.firstName").value("John"))
+                .andExpect(jsonPath("$.avatar").value(avatarBase64));
+
+        // Verify in database
+        User savedUser = userRepository.findAll().stream()
+                .filter(u -> "john.avatar@example.com".equals(u.getEmail()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(savedUser.getAvatar()).isEqualTo(avatarBase64);
+    }
+
+    @Test
+    void testUpdateAvatar() throws Exception {
+        // Given
+        User user = createTestUser("Test", "test.avatar@example.com");
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        String avatarBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        Map<String, String> request = new HashMap<>();
+        request.put("avatar", avatarBase64);
+
+        // When & Then
+        mockMvc.perform(put("/api/users/{id}/avatar", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").value(avatarBase64));
+
+        // Verify in database
+        User updated = userRepository.findById(userId).orElseThrow();
+        assertThat(updated.getAvatar()).isEqualTo(avatarBase64);
+    }
+
+    @Test
+    void testGetAvatar() throws Exception {
+        // Given
+        User user = createTestUser("Test", "test.getavatar@example.com");
+        String avatarBase64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A";
+        user.setAvatar(avatarBase64);
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When & Then - возвращаются бинарные данные изображения
+        mockMvc.perform(get("/api/users/{id}/avatar", userId))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    byte[] imageBytes = result.getResponse().getContentAsByteArray();
+                    assertThat(imageBytes).isNotNull();
+                    assertThat(imageBytes.length).isGreaterThan(0);
+                    // Проверяем, что это валидный JPEG (начинается с FF D8 FF)
+                    assertThat(imageBytes[0]).isEqualTo((byte)0xFF);
+                    assertThat(imageBytes[1]).isEqualTo((byte)0xD8);
+                    assertThat(imageBytes[2]).isEqualTo((byte)0xFF);
+                });
+    }
+    
+    @Test
+    void testGetAvatar_ContentType() throws Exception {
+        // Given - JPEG изображение
+        User user = createTestUser("Test", "test.contenttype@example.com");
+        String avatarJpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A";
+        user.setAvatar(avatarJpeg);
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When & Then - проверяем Content-Type
+        mockMvc.perform(get("/api/users/{id}/avatar", userId))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    String contentType = result.getResponse().getContentType();
+                    assertThat(contentType).isNotNull();
+                    assertThat(contentType).contains("image/jpeg");
+                });
+    }
+    
+    @Test
+    void testGetAvatar_PngContentType() throws Exception {
+        // Given - PNG изображение
+        User user = createTestUser("Test", "test.png@example.com");
+        String avatarPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        user.setAvatar(avatarPng);
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When & Then - проверяем Content-Type для PNG
+        mockMvc.perform(get("/api/users/{id}/avatar", userId))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    String contentType = result.getResponse().getContentType();
+                    assertThat(contentType).isNotNull();
+                    assertThat(contentType).contains("image/png");
+                    // Проверяем, что это валидный PNG (начинается с 89 50 4E 47)
+                    byte[] imageBytes = result.getResponse().getContentAsByteArray();
+                    assertThat(imageBytes[0]).isEqualTo((byte)0x89);
+                    assertThat(imageBytes[1]).isEqualTo((byte)0x50); // P
+                    assertThat(imageBytes[2]).isEqualTo((byte)0x4E); // N
+                    assertThat(imageBytes[3]).isEqualTo((byte)0x47); // G
+                });
+    }
+
+    @Test
+    void testGetAvatar_NotFound() throws Exception {
+        // Given
+        User user = createTestUser("Test", "test.noavatar@example.com");
+        // Не устанавливаем аватар
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When & Then
+        mockMvc.perform(get("/api/users/{id}/avatar", userId))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testGetAvatar_UserNotFound() throws Exception {
+        // When & Then
+        mockMvc.perform(get("/api/users/{id}/avatar", 999L))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testUpdateAvatar_RemoveAvatar() throws Exception {
+        // Given
+        User user = createTestUser("Test", "test.removeavatar@example.com");
+        String avatarBase64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A";
+        user.setAvatar(avatarBase64);
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When - удаляем аватар (передаем пустую строку или null)
+        Map<String, String> request = new HashMap<>();
+        request.put("avatar", "");
+
+        mockMvc.perform(put("/api/users/{id}/avatar", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.avatar").isEmpty());
+
+        // Verify in database
+        User updated = userRepository.findById(userId).orElseThrow();
+        assertThat(updated.getAvatar()).isNull();
+    }
+
+    @Test
+    void testUpdateUser_WithAvatar() throws Exception {
+        // Given
+        User user = createTestUser("Original", "original.avatar@example.com");
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        String avatarBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        User updatedUser = new User();
+        updatedUser.setFirstName("Updated");
+        updatedUser.setLastName("Name");
+        updatedUser.setEmail("updated.avatar@example.com");
+        updatedUser.setAddress("New Address");
+        updatedUser.setAvatar(avatarBase64);
+
+        // When & Then
+        mockMvc.perform(put("/api/users/{id}", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updatedUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.firstName").value("Updated"))
+                .andExpect(jsonPath("$.avatar").value(avatarBase64));
+
+        // Verify in database
+        User updated = userRepository.findById(userId).orElseThrow();
+        assertThat(updated.getAvatar()).isEqualTo(avatarBase64);
+    }
+
+    @Test
+    void testUpdateUser_PreserveAvatar() throws Exception {
+        // Given - пользователь с аватаром
+        User user = createTestUser("Original", "original.preserve@example.com");
+        String originalAvatar = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A";
+        user.setAvatar(originalAvatar);
+        User saved = userRepository.save(user);
+        Long userId = saved.getId();
+
+        // When - обновляем пользователя БЕЗ указания аватара
+        User updatedUser = new User();
+        updatedUser.setFirstName("Updated");
+        updatedUser.setLastName("Name");
+        updatedUser.setEmail("updated.preserve@example.com");
+        updatedUser.setAddress("New Address");
+        // Не устанавливаем avatar
+
+        mockMvc.perform(put("/api/users/{id}", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updatedUser)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.firstName").value("Updated"))
+                .andExpect(jsonPath("$.avatar").value(originalAvatar)); // Аватар должен сохраниться
+
+        // Verify in database
+        User updated = userRepository.findById(userId).orElseThrow();
+        assertThat(updated.getAvatar()).isEqualTo(originalAvatar);
     }
 
     private User createTestUser(String firstName, String email) {
