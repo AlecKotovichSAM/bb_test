@@ -40,10 +40,18 @@ class UC09_WishlistE2ETest extends BaseE2ETest {
         ResponseEntity<Map> rg = POST("/api/events/"+eventId+"/gifts", g, Map.class);
         assertThat(rg.getStatusCode()).isEqualTo(HttpStatus.OK);
         Long giftId = ((Number) rg.getBody().get("id")).longValue();
+        
+        // Проверяем, что подарок имеет поле categories
+        Map<String,Object> giftResponse = (Map<String,Object>) rg.getBody();
+        assertThat(giftResponse.get("categories")).isNotNull();
 
         ResponseEntity<List> list = GET("/api/events/"+eventId+"/gifts", List.class);
         assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(list.getBody()).hasSize(1);
+        
+        // Проверяем, что в списке подарков есть категории
+        Map<String,Object> giftFromList = (Map<String,Object>) list.getBody().get(0);
+        assertThat(giftFromList.get("categories")).isNotNull();
 
         Map<String,Object> upd = new HashMap<>();
         upd.put("id", giftId);

@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Set;
+import java.util.HashSet;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,9 +38,11 @@ import eu.bb.app.backend.repository.ChildRepository;
 import eu.bb.app.backend.repository.EventGuestRepository;
 import eu.bb.app.backend.repository.EventRepository;
 import eu.bb.app.backend.repository.GiftRepository;
+import eu.bb.app.backend.repository.GiftCategoryRepository;
 import eu.bb.app.backend.repository.GuestRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
 import eu.bb.app.backend.repository.UserRepository;
+import eu.bb.app.backend.entity.GiftCategory;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -72,6 +77,9 @@ class GiftsControllerIntegrationTest {
     @Autowired
     private ChatMessageRepository chatMessageRepository;
 
+    @Autowired
+    private GiftCategoryRepository categoryRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     private User testUser;
@@ -91,6 +99,7 @@ class GiftsControllerIntegrationTest {
         eventRepository.deleteAll();
         childRepository.deleteAll();
         userRepository.deleteAll();
+        // Категории не удаляем - они создаются через миграции и должны оставаться
 
         // Create test data
         testUser = new User();
@@ -194,6 +203,8 @@ class GiftsControllerIntegrationTest {
         Gift reserved = giftRepository.findById(savedGift.getId()).orElseThrow();
         assertThat(reserved.getStatus()).isEqualTo("reserved");
         assertThat(reserved.getReservedByGuest()).isEqualTo(testGuest.getId());
+        // Проверяем, что категории загружены (могут быть пустыми)
+        assertThat(reserved.getCategories()).isNotNull();
     }
 
     @Test
@@ -217,6 +228,8 @@ class GiftsControllerIntegrationTest {
         Gift cancelled = giftRepository.findById(savedGift.getId()).orElseThrow();
         assertThat(cancelled.getStatus()).isEqualTo("open");
         assertThat(cancelled.getReservedByGuest()).isNull();
+        // Проверяем, что категории загружены (могут быть пустыми)
+        assertThat(cancelled.getCategories()).isNotNull();
     }
 
     @Test
@@ -231,7 +244,80 @@ class GiftsControllerIntegrationTest {
         mockMvc.perform(get("/api/events/{eventId}/gifts", testEvent.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].categories").exists())
+                .andExpect(jsonPath("$[1].categories").exists());
+    }
+    
+    @Test
+    void testCreateGift_WithCategories() throws Exception {
+        // Given - получаем категорию из БД
+        GiftCategory legoCategory = categoryRepository.findByName("Lego")
+                .orElseThrow(() -> new RuntimeException("Lego category not found"));
+        
+        Gift gift = new Gift();
+        gift.setTitle("Test Gift with Category");
+        gift.setDescription("Test Description");
+        gift.setPrice(new BigDecimal("29.99"));
+        gift.setStatus("open");
+        
+        Set<GiftCategory> categories = new HashSet<>();
+        categories.add(legoCategory);
+        gift.setCategories(categories);
+
+        // When & Then
+        mockMvc.perform(post("/api/events/{eventId}/gifts", testEvent.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(gift)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.title").value("Test Gift with Category"))
+                .andExpect(jsonPath("$.categories").isArray())
+                .andExpect(jsonPath("$.categories.length()").value(1))
+                .andExpect(jsonPath("$.categories[0].name").value("Lego"));
+
+        // Verify in database - используем метод с загрузкой категорий
+        Gift saved = giftRepository.findByIdWithCategories(
+                giftRepository.findAll().stream()
+                        .filter(g -> "Test Gift with Category".equals(g.getTitle()))
+                        .findFirst()
+                        .orElseThrow()
+                        .getId()
+        ).orElseThrow();
+        assertThat(saved.getCategories()).hasSize(1);
+        assertThat(saved.getCategories().iterator().next().getName()).isEqualTo("Lego");
+    }
+    
+    @Test
+    void testUpdateGift_WithCategories() throws Exception {
+        // Given
+        Gift gift = createTestGift("Gift to Update");
+        Gift savedGift = giftRepository.save(gift);
+        
+        GiftCategory sportCategory = categoryRepository.findByName("Sport")
+                .orElseThrow(() -> new RuntimeException("Sport category not found"));
+        
+        // When - обновляем подарок с категориями
+        Gift updateGift = new Gift();
+        updateGift.setTitle("Updated Gift");
+        updateGift.setPrice(new BigDecimal("39.99"));
+        Set<GiftCategory> categories = new HashSet<>();
+        categories.add(sportCategory);
+        updateGift.setCategories(categories);
+
+        mockMvc.perform(put("/api/gifts/{id}", savedGift.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateGift)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Updated Gift"))
+                .andExpect(jsonPath("$.categories").isArray())
+                .andExpect(jsonPath("$.categories.length()").value(1))
+                .andExpect(jsonPath("$.categories[0].name").value("Sport"));
+
+        // Verify in database - используем метод с загрузкой категорий
+        Gift updated = giftRepository.findByIdWithCategories(savedGift.getId()).orElseThrow();
+        assertThat(updated.getCategories()).hasSize(1);
+        assertThat(updated.getCategories().iterator().next().getName()).isEqualTo("Sport");
     }
 
     @Test

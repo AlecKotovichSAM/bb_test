@@ -1,8 +1,10 @@
 package eu.bb.app.backend.controller;
 
 import eu.bb.app.backend.entity.Gift;
+import eu.bb.app.backend.entity.GiftCategory;
 import eu.bb.app.backend.entity.GuestToken;
 import eu.bb.app.backend.repository.GiftRepository;
+import eu.bb.app.backend.repository.GiftCategoryRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -20,12 +23,17 @@ import java.util.*;
 public class GiftsController {
     private static final Logger log = LoggerFactory.getLogger(GiftsController.class);
     private final GiftRepository gifts;
+    private final GiftCategoryRepository categoryRepository;
     private final GuestTokenRepository tokens;
     
-    public GiftsController(GiftRepository gifts, GuestTokenRepository tokens) { this.gifts = gifts; this.tokens = tokens; }
+    public GiftsController(GiftRepository gifts, GiftCategoryRepository categoryRepository, GuestTokenRepository tokens) { 
+        this.gifts = gifts; 
+        this.categoryRepository = categoryRepository;
+        this.tokens = tokens; 
+    }
 
     @PostMapping("/events/{eventId}/gifts")
-    @Operation(summary = "Добавить подарок к событию", description = "Создает новый подарок для указанного события. Статус автоматически устанавливается в 'open'")
+    @Operation(summary = "Добавить подарок к событию", description = "Создает новый подарок для указанного события. Статус автоматически устанавливается в 'open'. Можно указать категории через поле categories (массив объектов с полем id или name)")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Подарок успешно добавлен"),
         @ApiResponse(responseCode = "404", description = "Событие не найдено")
@@ -39,24 +47,57 @@ public class GiftsController {
             g.setId(null);
         }
         g.setEventId(eventId); 
-        g.setStatus("open"); 
+        g.setStatus("open");
+        
+        // Обрабатываем категории, если они указаны
+        if (g.getCategories() != null && !g.getCategories().isEmpty()) {
+            Set<GiftCategory> categoriesToSet = new HashSet<>();
+            for (GiftCategory category : g.getCategories()) {
+                GiftCategory categoryToAdd;
+                if (category.getId() != null) {
+                    // Если указан ID - находим категорию по ID
+                    categoryToAdd = categoryRepository.findById(category.getId())
+                            .orElseThrow(() -> {
+                                log.warn("Category not found with ID: {}", category.getId());
+                                return new RuntimeException("Category not found with ID: " + category.getId());
+                            });
+                } else if (category.getName() != null) {
+                    // Если указано имя - находим или создаем категорию
+                    categoryToAdd = categoryRepository.findByName(category.getName())
+                            .orElseGet(() -> {
+                                GiftCategory newCategory = new GiftCategory();
+                                newCategory.setName(category.getName());
+                                GiftCategory saved = categoryRepository.save(newCategory);
+                                log.info("Created new category: ID={}, name={}", saved.getId(), saved.getName());
+                                return saved;
+                            });
+                } else {
+                    continue; // Пропускаем категории без ID и имени
+                }
+                categoriesToSet.add(categoryToAdd);
+            }
+            g.setCategories(categoriesToSet);
+            log.info("Set {} categories for gift", categoriesToSet.size());
+        }
+        
         Gift saved = gifts.save(g);
-        log.info("Gift created successfully: ID={}, title={}, price={}", saved.getId(), saved.getTitle(), saved.getPrice());
+        log.info("Gift created successfully: ID={}, title={}, price={}, categories={}", 
+                saved.getId(), saved.getTitle(), saved.getPrice(), saved.getCategories().size());
         return saved;
     }
     
     @GetMapping("/events/{eventId}/gifts")
-    @Operation(summary = "Получить список подарков события", description = "Возвращает все подарки, связанные с указанным событием")
+    @Operation(summary = "Получить список подарков события", description = "Возвращает все подарки, связанные с указанным событием, включая их категории")
     @ApiResponse(responseCode = "200", description = "Список подарков успешно получен")
     public List<Gift> list(@Parameter(description = "ID события", required = true) @PathVariable Long eventId) {
         log.debug("Getting gifts for event ID: {}", eventId);
-        List<Gift> giftList = gifts.findByEventId(eventId);
+        List<Gift> giftList = gifts.findByEventIdWithCategories(eventId);
         log.info("Retrieved {} gifts for event ID: {}", giftList.size(), eventId);
         return giftList;
     }
     
     @PutMapping("/gifts/{id}")
-    @Operation(summary = "Обновить подарок", description = "Обновляет информацию о существующем подарке")
+    @Operation(summary = "Обновить подарок", description = "Обновляет информацию о существующем подарке. Можно обновить категории через поле categories")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Подарок успешно обновлен"),
         @ApiResponse(responseCode = "404", description = "Подарок не найден")
@@ -65,7 +106,7 @@ public class GiftsController {
             @Parameter(description = "ID подарка", required = true) @PathVariable Long id, 
             @RequestBody Gift g) {
         log.info("Updating gift ID: {}", id);
-        Gift existing = gifts.findById(id).orElseThrow(() -> {
+        Gift existing = gifts.findByIdWithCategories(id).orElseThrow(() -> {
             log.warn("Gift not found for update: {}", id);
             return new RuntimeException("Gift not found");
         });
@@ -79,8 +120,44 @@ public class GiftsController {
         if (g.getReservedByGuest() == null) {
             g.setReservedByGuest(existing.getReservedByGuest());
         }
+        
+        // Обрабатываем категории, если они указаны
+        if (g.getCategories() != null) {
+            Set<GiftCategory> categoriesToSet = new HashSet<>();
+            for (GiftCategory category : g.getCategories()) {
+                GiftCategory categoryToAdd;
+                if (category.getId() != null) {
+                    // Если указан ID - находим категорию по ID
+                    categoryToAdd = categoryRepository.findById(category.getId())
+                            .orElseThrow(() -> {
+                                log.warn("Category not found with ID: {}", category.getId());
+                                return new RuntimeException("Category not found with ID: " + category.getId());
+                            });
+                } else if (category.getName() != null) {
+                    // Если указано имя - находим или создаем категорию
+                    categoryToAdd = categoryRepository.findByName(category.getName())
+                            .orElseGet(() -> {
+                                GiftCategory newCategory = new GiftCategory();
+                                newCategory.setName(category.getName());
+                                GiftCategory saved = categoryRepository.save(newCategory);
+                                log.info("Created new category: ID={}, name={}", saved.getId(), saved.getName());
+                                return saved;
+                            });
+                } else {
+                    continue; // Пропускаем категории без ID и имени
+                }
+                categoriesToSet.add(categoryToAdd);
+            }
+            g.setCategories(categoriesToSet);
+            log.info("Updated categories for gift: {} categories", categoriesToSet.size());
+        } else {
+            // Если категории не указаны - сохраняем существующие
+            g.setCategories(existing.getCategories());
+        }
+        
         Gift updated = gifts.save(g);
-        log.info("Gift updated successfully: ID={}, title={}", updated.getId(), updated.getTitle());
+        log.info("Gift updated successfully: ID={}, title={}, categories={}", 
+                updated.getId(), updated.getTitle(), updated.getCategories().size());
         return updated;
     }
     
@@ -111,7 +188,7 @@ public class GiftsController {
             log.warn("Token not found for gift reservation: {}", token);
             return new RuntimeException("Token not found");
         });
-        Gift g = gifts.findById(giftId).orElseThrow(() -> {
+        Gift g = gifts.findByIdWithCategories(giftId).orElseThrow(() -> {
             log.warn("Gift not found for reservation: {}", giftId);
             return new RuntimeException("Gift not found");
         });
@@ -140,7 +217,7 @@ public class GiftsController {
             log.warn("Token not found for gift cancellation: {}", token);
             return new RuntimeException("Token not found");
         });
-        Gift g = gifts.findById(giftId).orElseThrow(() -> {
+        Gift g = gifts.findByIdWithCategories(giftId).orElseThrow(() -> {
             log.warn("Gift not found for cancellation: {}", giftId);
             return new RuntimeException("Gift not found");
         });
