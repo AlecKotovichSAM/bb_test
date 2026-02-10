@@ -26,6 +26,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import eu.bb.app.backend.entity.Child;
 import eu.bb.app.backend.entity.Event;
 import eu.bb.app.backend.entity.EventGuest;
+import eu.bb.app.backend.entity.Guest;
 import eu.bb.app.backend.entity.Gift;
 import eu.bb.app.backend.entity.GuestToken;
 import eu.bb.app.backend.entity.User;
@@ -34,6 +35,7 @@ import eu.bb.app.backend.repository.ChildRepository;
 import eu.bb.app.backend.repository.EventGuestRepository;
 import eu.bb.app.backend.repository.EventRepository;
 import eu.bb.app.backend.repository.GiftRepository;
+import eu.bb.app.backend.repository.GuestRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
 import eu.bb.app.backend.repository.UserRepository;
 
@@ -62,6 +64,9 @@ class GiftsControllerIntegrationTest {
     private EventGuestRepository guestRepository;
 
     @Autowired
+    private GuestRepository guestEntityRepository;
+
+    @Autowired
     private GuestTokenRepository tokenRepository;
 
     @Autowired
@@ -82,6 +87,7 @@ class GiftsControllerIntegrationTest {
         giftRepository.deleteAll();
         tokenRepository.deleteAll();
         guestRepository.deleteAll();
+        guestEntityRepository.deleteAll(); // удаляем guests перед events
         eventRepository.deleteAll();
         childRepository.deleteAll();
         userRepository.deleteAll();
@@ -104,9 +110,13 @@ class GiftsControllerIntegrationTest {
         testEvent.setStatus("Planned");
         testEvent = eventRepository.save(testEvent);
 
+        Guest guestEntity = new Guest();
+        guestEntity.setGuestName("Test Guest");
+        guestEntity = guestEntityRepository.save(guestEntity);
+        
         testGuest = new EventGuest();
         testGuest.setEventId(testEvent.getId());
-        testGuest.setGuestName("Test Guest");
+        testGuest.setGuest(guestEntity);
         testGuest.setRsvpStatus("open");
         testGuest = guestRepository.save(testGuest);
 

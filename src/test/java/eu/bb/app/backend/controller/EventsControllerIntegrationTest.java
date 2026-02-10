@@ -6,6 +6,7 @@ import eu.bb.app.backend.entity.Event;
 import eu.bb.app.backend.entity.User;
 import eu.bb.app.backend.entity.Child;
 import eu.bb.app.backend.entity.EventGuest;
+import eu.bb.app.backend.entity.Guest;
 import eu.bb.app.backend.entity.GuestChild;
 import eu.bb.app.backend.entity.ChatMessage;
 import eu.bb.app.backend.entity.Gift;
@@ -16,6 +17,7 @@ import eu.bb.app.backend.repository.EventRepository;
 import eu.bb.app.backend.repository.GiftRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
 import eu.bb.app.backend.repository.GuestChildRepository;
+import eu.bb.app.backend.repository.GuestRepository;
 import eu.bb.app.backend.repository.UserRepository;
 import eu.bb.app.backend.repository.ChildRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +72,9 @@ class EventsControllerIntegrationTest {
     @Autowired
     private GuestChildRepository guestChildRepository;
 
+    @Autowired
+    private GuestRepository guestRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     private User testUser;
@@ -83,6 +88,7 @@ class EventsControllerIntegrationTest {
         guestTokenRepository.deleteAll();
         guestChildRepository.deleteAll();
         eventGuestRepository.deleteAll();
+        guestRepository.deleteAll(); // удаляем guests перед events
         eventRepository.deleteAll();
         childRepository.deleteAll();
         userRepository.deleteAll();
@@ -196,9 +202,13 @@ class EventsControllerIntegrationTest {
         Event savedEvent2 = eventRepository.save(event2);
         
         // Гости для первого события
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Guest1");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent1.getId());
-        guest1.setGuestName("Guest1");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
         EventGuest savedGuest1 = eventGuestRepository.save(guest1);
         
@@ -207,16 +217,24 @@ class EventsControllerIntegrationTest {
         child1.setFirstName("Child1");
         guestChildRepository.save(child1);
         
+        Guest guestEntity2 = new Guest();
+        guestEntity2.setGuestName("Guest2");
+        guestEntity2 = guestRepository.save(guestEntity2);
+        
         EventGuest guest2 = new EventGuest();
         guest2.setEventId(savedEvent1.getId());
-        guest2.setGuestName("Guest2");
+        guest2.setGuest(guestEntity2);
         guest2.setRsvpStatus("accepted");
         eventGuestRepository.save(guest2);
         
         // Гости для второго события
+        Guest guestEntity3 = new Guest();
+        guestEntity3.setGuestName("Guest3");
+        guestEntity3 = guestRepository.save(guestEntity3);
+        
         EventGuest guest3 = new EventGuest();
         guest3.setEventId(savedEvent2.getId());
-        guest3.setGuestName("Guest3");
+        guest3.setGuest(guestEntity3);
         guest3.setRsvpStatus("open");
         EventGuest savedGuest3 = eventGuestRepository.save(guest3);
         
@@ -267,9 +285,13 @@ class EventsControllerIntegrationTest {
         Event event = createTestEvent("TestEvent", "Planned");
         Event savedEvent = eventRepository.save(event);
         
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent.getId());
-        guest1.setGuestName("Sophie");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
         EventGuest savedGuest1 = eventGuestRepository.save(guest1);
         
@@ -309,9 +331,13 @@ class EventsControllerIntegrationTest {
         Event event1 = createTestEvent("Event1", "Planned");
         Event savedEvent1 = eventRepository.save(event1);
         
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent1.getId());
-        guest1.setGuestName("Sophie");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
         EventGuest savedGuest1 = eventGuestRepository.save(guest1);
         
@@ -336,7 +362,7 @@ class EventsControllerIntegrationTest {
         
         List<Map<String, Object>> guests = new java.util.ArrayList<>();
         Map<String, Object> reusedGuest = new java.util.HashMap<>();
-        reusedGuest.put("guestId", savedGuest1.getId()); // переиспользуем гостя
+        reusedGuest.put("guestId", guestEntity1.getId()); // переиспользуем гостя из таблицы guests
         // children не указываем - должны скопироваться автоматически
         guests.add(reusedGuest);
         
@@ -396,11 +422,15 @@ class EventsControllerIntegrationTest {
         Event event1 = createTestEvent("Event1", "Planned");
         Event savedEvent1 = eventRepository.save(event1);
         
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent1.getId());
-        guest1.setGuestName("Sophie");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
-        EventGuest savedGuest1 = eventGuestRepository.save(guest1);
+        eventGuestRepository.save(guest1);
         
         // When - переиспользуем гостя, но переопределяем имя
         Map<String, Object> request = new java.util.HashMap<>();
@@ -411,7 +441,7 @@ class EventsControllerIntegrationTest {
         
         List<Map<String, Object>> guests = new java.util.ArrayList<>();
         Map<String, Object> reusedGuest = new java.util.HashMap<>();
-        reusedGuest.put("guestId", savedGuest1.getId());
+        reusedGuest.put("guestId", guestEntity1.getId());
         reusedGuest.put("guestName", "Sophie Updated"); // переопределяем имя
         guests.add(reusedGuest);
         
@@ -431,9 +461,13 @@ class EventsControllerIntegrationTest {
         Event event1 = createTestEvent("Event1", "Planned");
         Event savedEvent1 = eventRepository.save(event1);
         
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent1.getId());
-        guest1.setGuestName("Sophie");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
         EventGuest savedGuest1 = eventGuestRepository.save(guest1);
         
@@ -451,7 +485,7 @@ class EventsControllerIntegrationTest {
         
         List<Map<String, Object>> guests = new java.util.ArrayList<>();
         Map<String, Object> reusedGuest = new java.util.HashMap<>();
-        reusedGuest.put("guestId", savedGuest1.getId());
+        reusedGuest.put("guestId", guestEntity1.getId());
         reusedGuest.put("children", java.util.Arrays.asList("NewChild1", "NewChild2")); // переопределяем детей
         guests.add(reusedGuest);
         
@@ -479,12 +513,16 @@ class EventsControllerIntegrationTest {
         Event event1 = createTestEvent("Event1", "Planned");
         Event savedEvent1 = eventRepository.save(event1);
         
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1.setUserId(savedRegisteredUser.getId());
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(savedEvent1.getId());
-        guest1.setGuestName("Sophie");
-        guest1.setUserId(savedRegisteredUser.getId());
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
-        EventGuest savedGuest1 = eventGuestRepository.save(guest1);
+        eventGuestRepository.save(guest1);
         
         // When - переиспользуем гостя с userId
         Map<String, Object> request = new java.util.HashMap<>();
@@ -495,7 +533,7 @@ class EventsControllerIntegrationTest {
         
         List<Map<String, Object>> guests = new java.util.ArrayList<>();
         Map<String, Object> reusedGuest = new java.util.HashMap<>();
-        reusedGuest.put("guestId", savedGuest1.getId());
+        reusedGuest.put("guestId", guestEntity1.getId());
         guests.add(reusedGuest);
         
         request.put("guests", guests);
@@ -579,15 +617,23 @@ class EventsControllerIntegrationTest {
         Long eventId = savedEvent.getId();
 
         // Создаем гостей
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Guest1");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
         EventGuest guest1 = new EventGuest();
         guest1.setEventId(eventId);
-        guest1.setGuestName("Guest1");
+        guest1.setGuest(guestEntity1);
         guest1.setRsvpStatus("open");
         EventGuest savedGuest1 = eventGuestRepository.save(guest1);
 
+        Guest guestEntity2 = new Guest();
+        guestEntity2.setGuestName("Guest2");
+        guestEntity2 = guestRepository.save(guestEntity2);
+        
         EventGuest guest2 = new EventGuest();
         guest2.setEventId(eventId);
-        guest2.setGuestName("Guest2");
+        guest2.setGuest(guestEntity2);
         guest2.setRsvpStatus("accepted");
         EventGuest savedGuest2 = eventGuestRepository.save(guest2);
 
@@ -777,6 +823,329 @@ class EventsControllerIntegrationTest {
         // Verify in database
         Event saved = eventRepository.findAll().get(0);
         assertThat(saved.getStatus()).isEqualTo("Draft");
+    }
+
+    @Test
+    void testCreateEvent_ReuseGuest_ShouldNotDuplicateInGetAllGuests() throws Exception {
+        // Given - создаем первое событие с гостем
+        Event event1 = createTestEvent("Event1", "Planned");
+        Event savedEvent1 = eventRepository.save(event1);
+        
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
+        EventGuest guest1 = new EventGuest();
+        guest1.setEventId(savedEvent1.getId());
+        guest1.setGuest(guestEntity1);
+        guest1.setRsvpStatus("open");
+        eventGuestRepository.save(guest1);
+        
+        // When - создаем второе событие, переиспользуя того же гостя
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(60).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> reusedGuest = new java.util.HashMap<>();
+        reusedGuest.put("guestId", guestEntity1.getId());
+        guests.add(reusedGuest);
+        
+        request.put("guests", guests);
+        
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+        
+        // Then - проверяем через GET /api/users/{userId}/guests, что гость не дублируется
+        mockMvc.perform(get("/api/users/{userId}/guests", testUser.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(1)) // должен быть только один гость
+                .andExpect(jsonPath("$[0].guest.guestName").value("Sophie"))
+                .andExpect(jsonPath("$[0].guest.guestId").value(guestEntity1.getId()));
+    }
+
+    @Test
+    void testCreateEvent_ReuseGuestWithoutChildren_ShouldNotCopyChildren() throws Exception {
+        // Given - создаем первое событие с гостем БЕЗ детей
+        Event event1 = createTestEvent("Event1", "Planned");
+        Event savedEvent1 = eventRepository.save(event1);
+        
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
+        EventGuest guest1 = new EventGuest();
+        guest1.setEventId(savedEvent1.getId());
+        guest1.setGuest(guestEntity1);
+        guest1.setRsvpStatus("open");
+        eventGuestRepository.save(guest1);
+        // НЕ создаем детей для этого гостя
+        
+        // When - переиспользуем гостя без указания детей
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(60).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> reusedGuest = new java.util.HashMap<>();
+        reusedGuest.put("guestId", guestEntity1.getId());
+        // children не указываем
+        guests.add(reusedGuest);
+        
+        request.put("guests", guests);
+        
+        // Then - проверяем, что дети не скопировались (их не было)
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guests[0].guest.guestName").value("Sophie"))
+                .andExpect(jsonPath("$.guests[0].children").isEmpty());
+    }
+
+    @Test
+    void testCreateEvent_ReuseGuestWithGuestIdZero_ShouldTreatAsNull() throws Exception {
+        // Given - создаем событие с новым гостем, но передаем guestId=0
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(30).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> guest = new java.util.HashMap<>();
+        guest.put("guestId", 0); // guestId=0 должен обрабатываться как null
+        guest.put("guestName", "New Guest"); // требуется имя для нового гостя
+        guests.add(guest);
+        
+        request.put("guests", guests);
+        
+        // When & Then - должен создаться новый гость, а не переиспользоваться
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guests[0].guest.guestName").value("New Guest"))
+                .andExpect(jsonPath("$.guests[0].guest.guestId").exists());
+    }
+
+    @Test
+    void testCreateEvent_ReuseGuest_CreatesNewEventGuestButReusesGuest() throws Exception {
+        // Given - создаем первое событие с гостем
+        Event event1 = createTestEvent("Event1", "Planned");
+        Event savedEvent1 = eventRepository.save(event1);
+        
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
+        EventGuest guest1 = new EventGuest();
+        guest1.setEventId(savedEvent1.getId());
+        guest1.setGuest(guestEntity1);
+        guest1.setRsvpStatus("open");
+        EventGuest savedGuest1 = eventGuestRepository.save(guest1);
+        
+        Long originalGuestId = guestEntity1.getId();
+        Long originalEventGuestId = savedGuest1.getId();
+        
+        // When - создаем второе событие, переиспользуя гостя
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(60).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> reusedGuest = new java.util.HashMap<>();
+        reusedGuest.put("guestId", originalGuestId);
+        guests.add(reusedGuest);
+        
+        request.put("guests", guests);
+        
+        // When - создаем второе событие
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk());
+        
+        // Then - проверяем в БД
+        List<Event> allEvents = eventRepository.findAll();
+        assertThat(allEvents).hasSize(2);
+        
+        Event event2 = allEvents.stream()
+                .filter(e -> !e.getId().equals(savedEvent1.getId()))
+                .findFirst().orElseThrow();
+        
+        List<EventGuest> guestsEvent2 = eventGuestRepository.findByEventId(event2.getId());
+        assertThat(guestsEvent2).hasSize(1);
+        
+        EventGuest newEventGuest = guestsEvent2.get(0);
+        
+        // Проверяем, что создан новый EventGuest (другой ID)
+        assertThat(newEventGuest.getId()).isNotEqualTo(originalEventGuestId);
+        
+        // Проверяем, что используется тот же Guest (тот же guestId)
+        assertThat(newEventGuest.getGuestId()).isEqualTo(originalGuestId);
+        assertThat(newEventGuest.getGuestName()).isEqualTo("Sophie");
+        
+        // Проверяем, что в таблице guests все еще один гость
+        assertThat(guestRepository.findAll()).hasSize(1);
+        assertThat(guestRepository.findById(originalGuestId)).isPresent();
+    }
+
+    @Test
+    void testCreateEvent_ResponseContainsGuestId() throws Exception {
+        // Given - создаем событие с гостем
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(30).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> guest = new java.util.HashMap<>();
+        guest.put("guestName", "Sophie");
+        guests.add(guest);
+        
+        request.put("guests", guests);
+        
+        // When & Then - проверяем, что в ответе есть guestId
+        String response = mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guests[0].guest.id").exists()) // ID EventGuest
+                .andExpect(jsonPath("$.guests[0].guest.guestId").exists()) // ID Guest из таблицы guests
+                .andExpect(jsonPath("$.guests[0].guest.guestName").value("Sophie"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        
+        // Проверяем, что guestId можно использовать для переиспользования
+        // Парсим ответ и извлекаем guestId
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseMap = objectMapper.readValue(response, Map.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> guestsResponse = (List<Map<String, Object>>) responseMap.get("guests");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> guestData = (Map<String, Object>) guestsResponse.get(0).get("guest");
+        Long guestId = ((Number) guestData.get("guestId")).longValue();
+        
+        // Проверяем, что этот guestId существует в таблице guests
+        assertThat(guestRepository.findById(guestId)).isPresent();
+        Guest savedGuest = guestRepository.findById(guestId).orElseThrow();
+        assertThat(savedGuest.getGuestName()).isEqualTo("Sophie");
+    }
+
+    @Test
+    void testCreateEvent_ReuseGuestFromDifferentUser_ShouldWork() throws Exception {
+        // Given - создаем второго пользователя и событие с гостем
+        User user2 = new User();
+        user2.setFirstName("User2");
+        user2.setEmail("user2@example.com");
+        user2 = userRepository.save(user2);
+        
+        Child child2 = new Child();
+        child2.setUserId(user2.getId());
+        child2.setFirstName("Child2");
+        child2 = childRepository.save(child2);
+        
+        Event event1 = createTestEvent("Event1", "Planned");
+        event1.setHostId(user2.getId());
+        event1.setChildId(child2.getId());
+        Event savedEvent1 = eventRepository.save(event1);
+        
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Shared Guest");
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
+        EventGuest guest1 = new EventGuest();
+        guest1.setEventId(savedEvent1.getId());
+        guest1.setGuest(guestEntity1);
+        guest1.setRsvpStatus("open");
+        eventGuestRepository.save(guest1);
+        
+        // When - создаем событие для первого пользователя, переиспользуя гостя из события второго пользователя
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(30).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> reusedGuest = new java.util.HashMap<>();
+        reusedGuest.put("guestId", guestEntity1.getId());
+        guests.add(reusedGuest);
+        
+        request.put("guests", guests);
+        
+        // Then - должно работать, гости могут переиспользоваться между разными пользователями
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guests[0].guest.guestName").value("Shared Guest"))
+                .andExpect(jsonPath("$.guests[0].guest.guestId").value(guestEntity1.getId()));
+        
+        // Проверяем, что в таблице guests все еще один гость
+        assertThat(guestRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    void testCreateEvent_FindExistingGuestByNameAndUserId() throws Exception {
+        // Given - создаем пользователя и событие с гостем
+        User registeredUser = new User();
+        registeredUser.setFirstName("Registered");
+        registeredUser.setEmail("registered@example.com");
+        User savedRegisteredUser = userRepository.save(registeredUser);
+        
+        Event event1 = createTestEvent("Event1", "Planned");
+        Event savedEvent1 = eventRepository.save(event1);
+        
+        Guest guestEntity1 = new Guest();
+        guestEntity1.setGuestName("Sophie");
+        guestEntity1.setUserId(savedRegisteredUser.getId());
+        guestEntity1 = guestRepository.save(guestEntity1);
+        
+        EventGuest guest1 = new EventGuest();
+        guest1.setEventId(savedEvent1.getId());
+        guest1.setGuest(guestEntity1);
+        guest1.setRsvpStatus("open");
+        eventGuestRepository.save(guest1);
+        
+        // When - создаем новое событие с тем же именем и userId (без указания guestId)
+        Map<String, Object> request = new java.util.HashMap<>();
+        request.put("hostId", testUser.getId());
+        request.put("childId", testChild.getId());
+        request.put("datetime", LocalDateTime.now().plusDays(60).toString());
+        request.put("status", "Planned");
+        
+        List<Map<String, Object>> guests = new java.util.ArrayList<>();
+        Map<String, Object> guest = new java.util.HashMap<>();
+        guest.put("guestName", "Sophie"); // то же имя
+        guest.put("userId", savedRegisteredUser.getId()); // тот же userId
+        guests.add(guest);
+        
+        request.put("guests", guests);
+        
+        // Then - должен найти существующего гостя, а не создать нового
+        mockMvc.perform(post("/api/events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.guests[0].guest.guestName").value("Sophie"))
+                .andExpect(jsonPath("$.guests[0].guest.userId").value(savedRegisteredUser.getId()));
+        
+        // Проверяем, что в таблице guests все еще один гость с этим именем и userId
+        assertThat(guestRepository.findByGuestNameAndUserId("Sophie", savedRegisteredUser.getId())).isPresent();
+        assertThat(guestRepository.findAll()).hasSize(1);
     }
 
     private Event createTestEvent(String comment, String status) {

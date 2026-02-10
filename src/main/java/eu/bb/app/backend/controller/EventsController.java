@@ -8,10 +8,12 @@ import eu.bb.app.backend.entity.GuestChild;
 import eu.bb.app.backend.entity.Gift;
 import eu.bb.app.backend.repository.EventRepository;
 import eu.bb.app.backend.repository.EventGuestRepository;
+import eu.bb.app.backend.repository.GuestRepository;
 import eu.bb.app.backend.repository.GuestChildRepository;
 import eu.bb.app.backend.repository.ChatMessageRepository;
 import eu.bb.app.backend.repository.GiftRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
+import eu.bb.app.backend.entity.Guest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -32,15 +34,18 @@ import java.util.stream.Collectors;
 public class EventsController {
     private static final Logger log = LoggerFactory.getLogger(EventsController.class);
     private final EventRepository repo;
-    private final EventGuestRepository guestRepository;
+    private final EventGuestRepository eventGuestRepository;
+    private final GuestRepository guestRepository;
     private final GuestChildRepository childRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final GiftRepository giftRepository;
     private final GuestTokenRepository guestTokenRepository;
     
-    public EventsController(EventRepository repo, EventGuestRepository guestRepository, GuestChildRepository childRepository,
-                          ChatMessageRepository chatMessageRepository, GiftRepository giftRepository, GuestTokenRepository guestTokenRepository) {
+    public EventsController(EventRepository repo, EventGuestRepository eventGuestRepository, GuestRepository guestRepository, 
+                          GuestChildRepository childRepository, ChatMessageRepository chatMessageRepository, 
+                          GiftRepository giftRepository, GuestTokenRepository guestTokenRepository) {
         this.repo = repo;
+        this.eventGuestRepository = eventGuestRepository;
         this.guestRepository = guestRepository;
         this.childRepository = childRepository;
         this.chatMessageRepository = chatMessageRepository;
@@ -90,63 +95,117 @@ public class EventsController {
         
         if (request.getGuests() != null && !request.getGuests().isEmpty()) {
             for (CreateEventRequest.GuestWithChildren guestRequest : request.getGuests()) {
-                EventGuest guest = new EventGuest();
-                guest.setEventId(savedEvent.getId());
-                guest.setRsvpStatus("open");
+                Guest guestEntity;
+                Long existingEventGuestId = null; // ID существующего EventGuest для копирования детей
                 
-                // Если указан guestId - переиспользуем гостя из предыдущего события
-                if (guestRequest.getGuestId() != null) {
-                    EventGuest existingGuest = guestRepository.findById(guestRequest.getGuestId())
+                // Обрабатываем guestId == 0 так же, как hostId == 0 (устанавливаем в null)
+                final Long guestIdToReuse = (guestRequest.getGuestId() != null && guestRequest.getGuestId() == 0) 
+                        ? null 
+                        : guestRequest.getGuestId();
+                
+                if (guestIdToReuse != null) {
+                    // Переиспользуем существующего гостя из таблицы guests
+                    // guestIdToReuse - это ID из таблицы guests
+                    guestEntity = guestRepository.findById(guestIdToReuse)
                             .orElseThrow(() -> {
-                                log.warn("Guest not found with ID: {}", guestRequest.getGuestId());
+                                log.warn("Guest not found with ID: {}", guestIdToReuse);
                                 return new ResponseStatusException(HttpStatus.BAD_REQUEST, 
-                                        "Guest not found with ID: " + guestRequest.getGuestId());
+                                        "Guest not found with ID: " + guestIdToReuse);
                             });
                     
-                    // Копируем данные из существующего гостя
-                    // guestName может быть переопределен в запросе, иначе используем существующее имя
-                    guest.setGuestName(guestRequest.getGuestName() != null && !guestRequest.getGuestName().isEmpty()
-                            ? guestRequest.getGuestName()
-                            : existingGuest.getGuestName());
-                    guest.setUserId(existingGuest.getUserId());
+                    // Если указано новое имя в запросе - обновляем гостя
+                    if (guestRequest.getGuestName() != null && !guestRequest.getGuestName().isEmpty() 
+                            && !guestRequest.getGuestName().equals(guestEntity.getGuestName())) {
+                        guestEntity.setGuestName(guestRequest.getGuestName());
+                        guestEntity = guestRepository.save(guestEntity);
+                    }
                     
-                    log.debug("Reusing guest from previous event: original ID={}, name={}", 
-                            existingGuest.getId(), guest.getGuestName());
+                    // Находим существующий EventGuest для копирования детей
+                    // Ищем первый EventGuest с этим guestId из событий того же пользователя (hostId)
+                    // Это гарантирует, что мы найдем правильный EventGuest с детьми, а не старый из seed данных
+                    log.info("Looking for existing EventGuest with guestId={} from events of hostId={} to copy children", 
+                            guestIdToReuse, savedEvent.getHostId());
+                    Optional<EventGuest> existingEventGuest = savedEvent.getHostId() != null
+                            ? eventGuestRepository.findFirstByGuestIdAndHostId(guestIdToReuse, savedEvent.getHostId())
+                            : eventGuestRepository.findFirstByGuestId(guestIdToReuse);
+                    
+                    if (existingEventGuest.isPresent()) {
+                        existingEventGuestId = existingEventGuest.get().getId();
+                        log.info("Found existing EventGuest ID={} for guestId={} from hostId={}, will copy children", 
+                                existingEventGuestId, guestIdToReuse, savedEvent.getHostId());
+                    } else {
+                        log.warn("No existing EventGuest found for guestId={} from hostId={}, children will not be copied. " +
+                                "This may happen if this is the first time this guest is used by this host.", 
+                                guestIdToReuse, savedEvent.getHostId());
+                    }
+                    
+                    log.debug("Reusing guest from guests table: ID={}, name={}", 
+                            guestEntity.getId(), guestEntity.getGuestName());
                 } else {
-                    // Создаем нового гостя
+                    // Создаем нового гостя или находим существующего по имени и userId
                     if (guestRequest.getGuestName() == null || guestRequest.getGuestName().isEmpty()) {
                         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                                 "Guest name is required when creating new guest");
                     }
-                    guest.setGuestName(guestRequest.getGuestName());
-                    guest.setUserId(guestRequest.getUserId()); // может быть null для незарегистрированных
-                    log.debug("Creating new guest: name={}", guest.getGuestName());
+                    
+                    // Ищем существующего гостя по имени и userId
+                    guestEntity = guestRepository.findByGuestNameAndUserId(
+                            guestRequest.getGuestName(), 
+                            guestRequest.getUserId())
+                            .orElse(null);
+                    
+                    if (guestEntity == null) {
+                        // Создаем нового гостя в таблице guests
+                        guestEntity = new Guest();
+                        guestEntity.setGuestName(guestRequest.getGuestName());
+                        guestEntity.setUserId(guestRequest.getUserId());
+                        guestEntity = guestRepository.save(guestEntity);
+                        log.debug("Created new guest in guests table: ID={}, name={}", 
+                                guestEntity.getId(), guestEntity.getGuestName());
+                    } else {
+                        log.debug("Found existing guest in guests table: ID={}, name={}", 
+                                guestEntity.getId(), guestEntity.getGuestName());
+                    }
                 }
                 
-                EventGuest savedGuest = guestRepository.save(guest);
-                log.debug("Guest saved: ID={}, name={}, userId={}", 
-                        savedGuest.getId(), savedGuest.getGuestName(), savedGuest.getUserId());
+                // Создаем EventGuest для текущего события
+                EventGuest eventGuest = new EventGuest();
+                eventGuest.setEventId(savedEvent.getId());
+                eventGuest.setGuest(guestEntity); // Устанавливаем связь - Hibernate использует guest.getId() для колонки guest_id
+                eventGuest.setRsvpStatus("open");
+                EventGuest savedEventGuest = eventGuestRepository.save(eventGuest);
+                log.debug("EventGuest created: ID={}, eventId={}, guestId={}", 
+                        savedEventGuest.getId(), savedEventGuest.getEventId(), savedEventGuest.getGuestId());
                 
                 // Создаем детей гостя
                 List<GuestChild> children = new ArrayList<>();
                 
-                // Если переиспользуем гостя и не указаны дети в запросе - копируем детей из предыдущего события
-                if (guestRequest.getGuestId() != null && 
+                // Если переиспользуем гостя и не указаны дети в запросе - копируем детей из предыдущего EventGuest
+                if (existingEventGuestId != null && 
                     (guestRequest.getChildren() == null || guestRequest.getChildren().isEmpty())) {
-                    List<GuestChild> existingChildren = childRepository.findByGuestId(guestRequest.getGuestId());
+                    log.info("Copying children from existing EventGuest ID={} to new EventGuest ID={}", 
+                            existingEventGuestId, savedEventGuest.getId());
+                    List<GuestChild> existingChildren = childRepository.findByGuestId(existingEventGuestId);
+                    log.info("Found {} existing children for EventGuest ID={} to copy", 
+                            existingChildren.size(), existingEventGuestId);
                     for (GuestChild existingChild : existingChildren) {
                         GuestChild child = new GuestChild();
-                        child.setGuestId(savedGuest.getId());
+                        child.setGuestId(savedEventGuest.getId()); // ссылается на EventGuest.id
                         child.setFirstName(existingChild.getFirstName());
                         GuestChild savedChild = childRepository.save(child);
                         children.add(savedChild);
-                        log.debug("Copied guest child: name={}", savedChild.getFirstName());
+                        log.info("Copied guest child: name={}, new child ID={}", savedChild.getFirstName(), savedChild.getId());
                     }
+                    log.info("Total {} children copied for EventGuest ID={}", children.size(), savedEventGuest.getId());
                 } else if (guestRequest.getChildren() != null && !guestRequest.getChildren().isEmpty()) {
                     // Создаем новых детей или используем указанных в запросе
+                    if (existingEventGuestId != null) {
+                        log.info("Children specified in request, skipping auto-copy. existingEventGuestId={}, children in request={}", 
+                                existingEventGuestId, guestRequest.getChildren());
+                    }
                     for (String childName : guestRequest.getChildren()) {
                         GuestChild child = new GuestChild();
-                        child.setGuestId(savedGuest.getId());
+                        child.setGuestId(savedEventGuest.getId()); // ссылается на EventGuest.id
                         child.setFirstName(childName);
                         GuestChild savedChild = childRepository.save(child);
                         children.add(savedChild);
@@ -154,12 +213,13 @@ public class EventsController {
                     }
                 }
                 
-                guestsResponse.add(new EventResponse.GuestWithChildrenResponse(savedGuest, children));
+                guestsResponse.add(new EventResponse.GuestWithChildrenResponse(savedEventGuest, children));
             }
             log.info("Created {} guests with their children for event ID: {}", guestsResponse.size(), savedEvent.getId());
         }
         
-        return new EventResponse(savedEvent, guestsResponse);
+        // Используем buildEventResponse для гарантии правильной загрузки всех данных
+        return buildEventResponse(savedEvent);
     }
     
     @GetMapping("/events")
@@ -201,17 +261,33 @@ public class EventsController {
         List<Event> events = repo.findByHostId(userId);
         log.debug("Found {} events for user ID: {}", events.size(), userId);
         
-        // Собираем всех гостей из всех событий с их детьми
-        List<EventResponse.GuestWithChildrenResponse> allGuests = new ArrayList<>();
+        // Собираем уникальных гостей из всех событий с их детьми
+        // Используем Map для дедупликации по guestId из таблицы guests
+        Map<Long, EventResponse.GuestWithChildrenResponse> uniqueGuestsMap = new HashMap<>();
         for (Event event : events) {
-            List<EventGuest> guests = guestRepository.findByEventId(event.getId());
-            for (EventGuest guest : guests) {
-                List<GuestChild> children = childRepository.findByGuestId(guest.getId());
-                allGuests.add(new EventResponse.GuestWithChildrenResponse(guest, children));
+            List<EventGuest> eventGuests = eventGuestRepository.findByEventId(event.getId());
+            for (EventGuest eventGuest : eventGuests) {
+                Long guestId = eventGuest.getGuestId();
+                
+                // Если гость уже есть в Map, пропускаем (уже добавлен из другого события)
+                if (uniqueGuestsMap.containsKey(guestId)) {
+                    continue;
+                }
+                
+                // Загружаем Guest из таблицы guests
+                if (eventGuest.getGuest() == null && eventGuest.getGuestId() != null) {
+                    Guest guest = guestRepository.findById(eventGuest.getGuestId())
+                            .orElse(null);
+                    eventGuest.setGuest(guest);
+                }
+                
+                List<GuestChild> children = childRepository.findByGuestId(eventGuest.getId());
+                uniqueGuestsMap.put(guestId, new EventResponse.GuestWithChildrenResponse(eventGuest, children));
             }
         }
         
-        log.info("Retrieved {} guests from {} events for user ID: {}", allGuests.size(), events.size(), userId);
+        List<EventResponse.GuestWithChildrenResponse> allGuests = new ArrayList<>(uniqueGuestsMap.values());
+        log.info("Retrieved {} unique guests from {} events for user ID: {}", allGuests.size(), events.size(), userId);
         return allGuests;
     }
     
@@ -262,19 +338,19 @@ public class EventsController {
         }
         
         // Удаляем связанные данные в правильном порядке (зависимые таблицы сначала)
-        List<EventGuest> guests = guestRepository.findByEventId(id);
-        List<Long> guestIds = guests.stream().map(EventGuest::getId).collect(Collectors.toList());
+        List<EventGuest> eventGuests = eventGuestRepository.findByEventId(id);
+        List<Long> eventGuestIds = eventGuests.stream().map(EventGuest::getId).collect(Collectors.toList());
         
         // Удаляем детей гостей и токены гостей
-        for (EventGuest guest : guests) {
-            childRepository.deleteAll(childRepository.findByGuestId(guest.getId()));
-            guestTokenRepository.deleteAll(guestTokenRepository.findByGuestId(guest.getId()));
+        for (EventGuest eventGuest : eventGuests) {
+            childRepository.deleteAll(childRepository.findByGuestId(eventGuest.getId()));
+            guestTokenRepository.deleteAll(guestTokenRepository.findByGuestId(eventGuest.getId()));
         }
         
         // Обнуляем ссылки на гостей в подарках перед удалением гостей
         List<Gift> gifts = giftRepository.findByEventId(id);
         for (Gift gift : gifts) {
-            if (gift.getReservedByGuest() != null && guestIds.contains(gift.getReservedByGuest())) {
+            if (gift.getReservedByGuest() != null && eventGuestIds.contains(gift.getReservedByGuest())) {
                 gift.setReservedByGuest(null);
                 giftRepository.save(gift);
             }
@@ -288,8 +364,9 @@ public class EventsController {
         // Удаляем подарки
         giftRepository.deleteAll(gifts);
         
-        // Удаляем гостей (после удаления подарков, чтобы не было ссылок)
-        guestRepository.deleteAll(guests);
+        // Удаляем EventGuest записи (после удаления подарков, чтобы не было ссылок)
+        // НЕ удаляем записи из таблицы guests - они могут использоваться в других событиях
+        eventGuestRepository.deleteAll(eventGuests);
         
         // Удаляем само событие
         repo.deleteById(id);
@@ -318,11 +395,17 @@ public class EventsController {
      * Вспомогательный метод для построения EventResponse из Event с загрузкой гостей и их детей
      */
     private EventResponse buildEventResponse(Event event) {
-        List<EventGuest> guests = guestRepository.findByEventId(event.getId());
-        List<EventResponse.GuestWithChildrenResponse> guestsResponse = guests.stream()
-                .map(guest -> {
-                    List<GuestChild> children = childRepository.findByGuestId(guest.getId());
-                    return new EventResponse.GuestWithChildrenResponse(guest, children);
+        List<EventGuest> eventGuests = eventGuestRepository.findByEventId(event.getId());
+        List<EventResponse.GuestWithChildrenResponse> guestsResponse = eventGuests.stream()
+                .map(eventGuest -> {
+                    // Загружаем Guest из таблицы guests
+                    if (eventGuest.getGuest() == null && eventGuest.getGuestId() != null) {
+                        Guest guest = guestRepository.findById(eventGuest.getGuestId())
+                                .orElse(null);
+                        eventGuest.setGuest(guest);
+                    }
+                    List<GuestChild> children = childRepository.findByGuestId(eventGuest.getId());
+                    return new EventResponse.GuestWithChildrenResponse(eventGuest, children);
                 })
                 .collect(Collectors.toList());
         return new EventResponse(event, guestsResponse);

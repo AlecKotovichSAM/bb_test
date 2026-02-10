@@ -1,6 +1,7 @@
 package eu.bb.app.backend.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,10 +17,21 @@ public class CreateEventRequest {
     private List<GuestWithChildren> guests;
     
     public static class GuestWithChildren {
+        @JsonProperty("guestId")
         private Long guestId; // опционально: ID гостя из предыдущего события для переиспользования
+        
+        @JsonProperty("guestName")
         private String guestName; // опционально: имя нового гостя или переопределение для существующего
+        
+        @JsonProperty("userId")
         private Long userId; // опционально: ID зарегистрированного пользователя
+        
+        @JsonProperty("children")
         private List<String> children; // список имен детей
+        
+        // Конструктор по умолчанию для корректной десериализации Jackson
+        public GuestWithChildren() {
+        }
         
         public Long getGuestId() {
             return guestId;

@@ -20,31 +20,69 @@ import java.util.*;
 public class GuestsController {
     private static final Logger log = LoggerFactory.getLogger(GuestsController.class);
     private final EventGuestRepository guests;
+    private final GuestRepository guestRepository;
     private final GuestTokenRepository tokens;
     private final TokenService tokenService;
     
-    public GuestsController(EventGuestRepository guests, GuestTokenRepository tokens, TokenService tokenService) {
-        this.guests = guests; this.tokens = tokens; this.tokenService = tokenService;
+    public GuestsController(EventGuestRepository guests, GuestRepository guestRepository, GuestTokenRepository tokens, TokenService tokenService) {
+        this.guests = guests; 
+        this.guestRepository = guestRepository;
+        this.tokens = tokens; 
+        this.tokenService = tokenService;
     }
     
     @PostMapping("/events/{eventId}/guests")
-    @Operation(summary = "Добавить гостя к событию", description = "Добавляет нового гостя к указанному событию")
+    @Operation(summary = "Добавить гостя к событию", description = "Добавляет нового гостя к указанному событию. Принимает guestId (для переиспользования существующего гостя) или guestName (для создания нового)")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Гость успешно добавлен"),
-        @ApiResponse(responseCode = "404", description = "Событие не найдено")
+        @ApiResponse(responseCode = "404", description = "Событие не найдено"),
+        @ApiResponse(responseCode = "400", description = "Некорректные данные гостя")
     })
     public EventGuest add(
             @Parameter(description = "ID события", required = true) @PathVariable Long eventId, 
             @RequestBody EventGuest g) {
-        log.info("Adding guest '{}' to event ID: {}", g.getGuestName(), eventId);
-        // Убеждаемся, что ID установлен в null для нового гостя
-        if (g.getId() != null && g.getId() == 0) {
-            g.setId(null);
+        Guest guestEntity;
+        
+        // Если указан guestId - переиспользуем существующего гостя
+        if (g.getGuestId() != null) {
+            guestEntity = guestRepository.findById(g.getGuestId())
+                    .orElseThrow(() -> {
+                        log.warn("Guest not found with ID: {}", g.getGuestId());
+                        return new RuntimeException("Guest not found with ID: " + g.getGuestId());
+                    });
+            log.info("Reusing guest ID: {}, name: {} for event ID: {}", 
+                    guestEntity.getId(), guestEntity.getGuestName(), eventId);
+        } else {
+            // Создаем нового гостя или находим существующего по имени и userId
+            String guestName = g.getGuestName();
+            if (guestName == null || guestName.isEmpty()) {
+                throw new RuntimeException("Guest name is required when guestId is not provided");
+            }
+            
+            guestEntity = guestRepository.findByGuestNameAndUserId(guestName, g.getUserId())
+                    .orElse(null);
+            
+            if (guestEntity == null) {
+                // Создаем нового гостя в таблице guests
+                guestEntity = new Guest();
+                guestEntity.setGuestName(guestName);
+                guestEntity.setUserId(g.getUserId());
+                guestEntity = guestRepository.save(guestEntity);
+                log.info("Created new guest ID: {}, name: {} for event ID: {}", 
+                        guestEntity.getId(), guestEntity.getGuestName(), eventId);
+            } else {
+                log.info("Found existing guest ID: {}, name: {} for event ID: {}", 
+                        guestEntity.getId(), guestEntity.getGuestName(), eventId);
+            }
         }
-        g.setEventId(eventId); 
-        g.setRsvpStatus("open"); 
-        EventGuest saved = guests.save(g);
-        log.info("Guest added successfully with ID: {}", saved.getId());
+        
+        // Создаем EventGuest для текущего события
+        EventGuest eventGuest = new EventGuest();
+        eventGuest.setEventId(eventId);
+        eventGuest.setGuest(guestEntity); // Устанавливаем связь - Hibernate использует guest.getId() для колонки guest_id
+        eventGuest.setRsvpStatus("open");
+        EventGuest saved = guests.save(eventGuest);
+        log.info("EventGuest added successfully with ID: {} for event ID: {}", saved.getId(), eventId);
         return saved;
     }
     
@@ -54,6 +92,13 @@ public class GuestsController {
     public List<EventGuest> list(@Parameter(description = "ID события", required = true) @PathVariable Long eventId) {
         log.debug("Getting guests for event ID: {}", eventId);
         List<EventGuest> guestList = guests.findByEventId(eventId);
+        // Загружаем связанных гостей из таблицы guests
+        for (EventGuest eventGuest : guestList) {
+            if (eventGuest.getGuest() == null && eventGuest.getGuestId() != null) {
+                Guest guest = guestRepository.findById(eventGuest.getGuestId()).orElse(null);
+                eventGuest.setGuest(guest);
+            }
+        }
         log.info("Retrieved {} guests for event ID: {}", guestList.size(), eventId);
         return guestList;
     }
@@ -125,6 +170,11 @@ public class GuestsController {
             log.warn("Guest not found for token: {}", token);
             return new RuntimeException("Guest not found");
         });
+        // Загружаем связанного гостя из таблицы guests
+        if (guest.getGuest() == null && guest.getGuestId() != null) {
+            Guest guestEntity = guestRepository.findById(guest.getGuestId()).orElse(null);
+            guest.setGuest(guestEntity);
+        }
         log.info("Invite opened successfully for guest: {}", guest.getGuestName());
         return guest;
     }
@@ -148,6 +198,11 @@ public class GuestsController {
             log.warn("Guest not found for RSVP token: {}", token);
             return new RuntimeException("Guest not found");
         });
+        // Загружаем связанного гостя из таблицы guests
+        if (g.getGuest() == null && g.getGuestId() != null) {
+            Guest guestEntity = guestRepository.findById(g.getGuestId()).orElse(null);
+            g.setGuest(guestEntity);
+        }
         g.setRsvpStatus(status); 
         EventGuest updated = guests.save(g);
         log.info("RSVP updated successfully: guest={}, status={}", updated.getGuestName(), updated.getRsvpStatus());
