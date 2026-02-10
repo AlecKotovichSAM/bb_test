@@ -182,6 +182,8 @@ curl http://localhost:8080/v3/api-docs > api-spec.json
 - `email` - email адрес
 - `address` - адрес
 
+**Важно:** Аватар пользователя хранится в отдельной таблице `user_avatars`. Для работы с аватаром используйте endpoints `/api/users/{id}/avatar`.
+
 ### Child (Ребенок)
 Ребенок пользователя, для которого организуется событие.
 
@@ -191,7 +193,8 @@ curl http://localhost:8080/v3/api-docs > api-spec.json
 - `firstName` - имя ребенка
 - `birthday` - дата рождения (формат: `YYYY-MM-DD`)
 - `gender` - пол (`male`, `female`)
-- `avatar` - URL аватара (может быть `null`)
+
+**Важно:** Аватар ребенка хранится в отдельной таблице `child_avatars`. Для работы с аватаром используйте endpoints `/api/children/{id}/avatar`.
 
 ### Event (Событие)
 Событие (день рождения) для ребенка.
@@ -235,9 +238,19 @@ curl http://localhost:8080/v3/api-docs > api-spec.json
 - `eventId` - ID события
 - `title` - название подарка
 - `description` - описание
+- `url` - ссылка на подарок
+- `image` - ссылка на изображение подарка
 - `price` - цена (BigDecimal, формат: `10.2`)
 - `status` - статус (`open`, `reserved`)
 - `reservedByGuest` - ID гостя, зарезервировавшего подарок (может быть `null`)
+- `categories` - массив категорий подарка (связь many-to-many с `GiftCategory`)
+
+### GiftCategory (Категория подарка)
+Категория для классификации подарков.
+
+**Поля:**
+- `id` - уникальный идентификатор
+- `name` - название категории (уникальное, например: "Lego", "Sport", "Outdoor", "Bücher", "Basteln")
 
 ### GuestToken (Токен приглашения)
 Уникальный токен для доступа гостя к приглашению.
@@ -318,6 +331,27 @@ Content-Type: application/json
 DELETE /api/users/{id}
 ```
 
+#### Обновить аватар пользователя
+```http
+PUT /api/users/{id}/avatar
+Content-Type: application/json
+
+{
+  "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+}
+```
+
+**Формат аватара:** data URI string (`data:image/jpeg;base64,...` или `data:image/png;base64,...`)
+
+**Удаление аватара:** передайте пустую строку `"avatar": ""`
+
+#### Получить аватар пользователя
+```http
+GET /api/users/{id}/avatar
+```
+
+Возвращает бинарные данные изображения с правильным Content-Type. Можно использовать напрямую в теге `<img src="/api/users/{id}/avatar">`.
+
 ### Children API (`/api/users/{userId}/children`)
 
 #### Добавить ребенка пользователю
@@ -329,9 +363,11 @@ Content-Type: application/json
   "firstName": "Levi",
   "birthday": "2018-06-10",
   "gender": "male",
-  "avatar": null
+  "avatar": "data:image/jpeg;base64,..."  // опционально
 }
 ```
+
+**Аватар:** Можно указать аватар при создании ребенка в поле `avatar` (формат: `data:image/jpeg;base64,...` или `data:image/png;base64,...`). Если не указан, ребенок создается без аватара.
 
 #### Получить детей пользователя
 ```http
@@ -351,15 +387,37 @@ Content-Type: application/json
 {
   "firstName": "Levi",
   "birthday": "2018-06-10",
-  "gender": "male",
-  "avatar": "https://example.com/avatar.jpg"
+  "gender": "male"
 }
 ```
+
+**Важно:** Аватар не может быть обновлен через этот endpoint. Используйте `PUT /api/children/{id}/avatar` для обновления аватара.
 
 #### Удалить ребенка
 ```http
 DELETE /api/children/{id}
 ```
+
+#### Обновить аватар ребенка
+```http
+PUT /api/children/{id}/avatar
+Content-Type: application/json
+
+{
+  "avatar": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+}
+```
+
+**Формат аватара:** data URI string (`data:image/jpeg;base64,...` или `data:image/png;base64,...`)
+
+**Удаление аватара:** передайте пустую строку `"avatar": ""`
+
+#### Получить аватар ребенка
+```http
+GET /api/children/{id}/avatar
+```
+
+Возвращает бинарные данные изображения с правильным Content-Type. Можно использовать напрямую в теге `<img src="/api/children/{id}/avatar">`.
 
 ### Events API (`/api/events`)
 
@@ -604,9 +662,17 @@ Content-Type: application/json
 {
   "title": "LEGO Set",
   "description": "Car",
-  "price": 59.99
+  "url": "https://example.com/lego-set",
+  "image": "https://example.com/lego-image.jpg",
+  "price": 59.99,
+  "categories": [
+    { "id": 1 },           // по ID существующей категории
+    { "name": "Lego" }     // или по имени (создастся, если не существует)
+  ]
 }
 ```
+
+**Категории:** Можно указать категории подарка через поле `categories` (массив объектов с полем `id` или `name`). Если категория с указанным именем не существует, она будет создана автоматически.
 
 Статус автоматически устанавливается в `open`.
 
@@ -623,11 +689,18 @@ Content-Type: application/json
 {
   "title": "LEGO Set X",
   "description": "Car",
-  "price": 59.99
+  "price": 59.99,
+  "categories": [
+    { "id": 1 },
+    { "name": "Sport" }
+  ]
 }
 ```
 
-**Важно:** При обновлении не нужно передавать `eventId`, `status` и `reservedByGuest` - они сохраняются автоматически из существующего подарка.
+**Важно:** 
+- При обновлении не нужно передавать `eventId`, `status` и `reservedByGuest` - они сохраняются автоматически из существующего подарка
+- Если поле `categories` не указано, существующие категории сохраняются
+- Если указано `categories`, категории обновляются согласно переданному списку
 
 #### Зарезервировать подарок (для гостя по токену)
 ```http
@@ -647,6 +720,41 @@ POST /api/invite/{token}/gifts/{giftId}/cancel
 ```http
 DELETE /api/gifts/{id}
 ```
+
+### Gift Categories API (`/api/categories`)
+
+#### Получить список всех категорий
+```http
+GET /api/categories
+```
+
+**Ответ:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Basteln"
+  },
+  {
+    "id": 2,
+    "name": "Bücher"
+  },
+  {
+    "id": 3,
+    "name": "Lego"
+  },
+  {
+    "id": 4,
+    "name": "Outdoor"
+  },
+  {
+    "id": 5,
+    "name": "Sport"
+  }
+]
+```
+
+Категории возвращаются отсортированными по имени в алфавитном порядке.
 
 ### Chat API (`/api/events/{eventId}/chat`)
 
@@ -1111,6 +1219,11 @@ mvn test -Dtest=*E2ETest
 - `V2__seed.sql` - начальные данные
 - `V3__add_guest_children.sql` - добавление таблицы детей гостей
 - `V4__create_guests_table.sql` - нормализация таблицы гостей (создание таблицы `guests` и связь с `event_guests`)
+- `V5__create_gift_categories.sql` - создание таблицы категорий подарков и связи many-to-many
+- `V6__add_user_avatar.sql` - добавление поля avatar в таблицу users
+- `V7__add_user_avatars.sql` - заполнение аватаров для начальных пользователей
+- `V8__refactor_user_avatar_to_separate_table.sql` - рефакторинг: вынос аватаров пользователей в отдельную таблицу `user_avatars`
+- `V9__refactor_child_avatar_to_separate_table.sql` - рефакторинг: вынос аватаров детей в отдельную таблицу `child_avatars`
 
 ### Локальная разработка
 
