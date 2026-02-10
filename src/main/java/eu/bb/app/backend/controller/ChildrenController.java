@@ -85,14 +85,17 @@ public class ChildrenController {
     }
     
     @GetMapping("/api/users/{userId}/children")
-    @Operation(summary = "Получить детей пользователя", description = "Возвращает список всех детей указанного пользователя")
-    @ApiResponse(responseCode = "200", description = "Список детей успешно получен")
-    public List<Child> list(@Parameter(description = "ID пользователя", required = true) @PathVariable Long userId) { 
+    @Operation(summary = "Получить детей пользователя", description = "Возвращает список всех детей указанного пользователя. Аватары детей не включаются в ответ, для получения аватара используйте GET /api/children/{id}/avatar")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Список детей успешно получен"),
+        @ApiResponse(responseCode = "404", description = "Пользователь не найден")
+    })
+    public List<Child> list(@Parameter(description = "ID пользователя (родителя)", required = true) @PathVariable Long userId) { 
         return repo.findByUserId(userId); 
     }
     
     @GetMapping("/api/children/{id}")
-    @Operation(summary = "Получить ребенка по ID", description = "Возвращает информацию о ребенке по его идентификатору")
+    @Operation(summary = "Получить ребенка по ID", description = "Возвращает информацию о ребенке по его идентификатору. Аватар ребенка не включается в ответ, для получения аватара используйте GET /api/children/{id}/avatar")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Ребенок найден"),
         @ApiResponse(responseCode = "404", description = "Ребенок не найден")
@@ -102,7 +105,7 @@ public class ChildrenController {
     }
     
     @PutMapping("/api/children/{id}")
-    @Operation(summary = "Обновить информацию о ребенке", description = "Обновляет данные существующего ребенка")
+    @Operation(summary = "Обновить информацию о ребенке", description = "Обновляет данные существующего ребенка. Аватар не может быть обновлен через этот endpoint, используйте PUT /api/children/{id}/avatar для обновления аватара")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Информация о ребенке успешно обновлена"),
         @ApiResponse(responseCode = "404", description = "Ребенок не найден")

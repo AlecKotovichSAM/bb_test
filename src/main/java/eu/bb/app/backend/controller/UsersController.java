@@ -33,7 +33,7 @@ public class UsersController {
     }
     
     @GetMapping
-    @Operation(summary = "Получить всех пользователей", description = "Возвращает список всех зарегистрированных пользователей")
+    @Operation(summary = "Получить всех пользователей", description = "Возвращает список всех зарегистрированных пользователей. Аватары пользователей не включаются в ответ, для получения аватара используйте GET /api/users/{id}/avatar")
     @ApiResponse(responseCode = "200", description = "Список пользователей успешно получен")
     public List<User> all() {
         log.debug("Getting all users");
@@ -43,7 +43,7 @@ public class UsersController {
     }
     
     @PostMapping
-    @Operation(summary = "Создать пользователя", description = "Создает нового пользователя в системе")
+    @Operation(summary = "Создать пользователя", description = "Создает нового пользователя в системе. Аватар не может быть указан при создании, используйте PUT /api/users/{id}/avatar после создания пользователя")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Пользователь успешно создан"),
         @ApiResponse(responseCode = "400", description = "Некорректные данные пользователя")
@@ -61,7 +61,7 @@ public class UsersController {
     }
     
     @GetMapping("/{id}")
-    @Operation(summary = "Получить пользователя по ID", description = "Возвращает информацию о пользователе по его идентификатору")
+    @Operation(summary = "Получить пользователя по ID", description = "Возвращает информацию о пользователе по его идентификатору. Аватар пользователя не включается в ответ, для получения аватара используйте GET /api/users/{id}/avatar")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Пользователь найден"),
         @ApiResponse(responseCode = "404", description = "Пользователь не найден")
@@ -77,7 +77,7 @@ public class UsersController {
     }
     
     @PutMapping("/{id}")
-    @Operation(summary = "Обновить пользователя", description = "Обновляет информацию о существующем пользователе")
+    @Operation(summary = "Обновить пользователя", description = "Обновляет информацию о существующем пользователе. Аватар не может быть обновлен через этот endpoint, используйте PUT /api/users/{id}/avatar для обновления аватара")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Пользователь успешно обновлен"),
         @ApiResponse(responseCode = "404", description = "Пользователь не найден")
