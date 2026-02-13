@@ -6,6 +6,7 @@ import eu.bb.app.backend.entity.GuestToken;
 import eu.bb.app.backend.repository.GiftRepository;
 import eu.bb.app.backend.repository.GiftCategoryRepository;
 import eu.bb.app.backend.repository.GuestTokenRepository;
+import eu.bb.app.backend.service.AmazonPageParser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -14,8 +15,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import java.io.IOException;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api")
@@ -25,11 +26,13 @@ public class GiftsController {
     private final GiftRepository gifts;
     private final GiftCategoryRepository categoryRepository;
     private final GuestTokenRepository tokens;
+    private final AmazonPageParser amazonPageParser;
     
-    public GiftsController(GiftRepository gifts, GiftCategoryRepository categoryRepository, GuestTokenRepository tokens) { 
+    public GiftsController(GiftRepository gifts, GiftCategoryRepository categoryRepository, GuestTokenRepository tokens, AmazonPageParser amazonPageParser) { 
         this.gifts = gifts; 
         this.categoryRepository = categoryRepository;
-        this.tokens = tokens; 
+        this.tokens = tokens;
+        this.amazonPageParser = amazonPageParser;
     }
 
     @PostMapping("/events/{eventId}/gifts")
@@ -229,5 +232,33 @@ public class GiftsController {
             log.warn("Gift reserved by different guest. Current guest: {}, token guest: {}", g.getReservedByGuest(), t.getGuestId());
         }
         return gifts.save(g);
+    }
+    
+    @GetMapping("/gifts/loadAmazonProduct")
+    @Operation(summary = "Загрузить данные о продукте Amazon", description = "Парсит страницу Amazon по URL и возвращает информацию о продукте (название, цена, изображение, описание)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Данные о продукте успешно загружены"),
+        @ApiResponse(responseCode = "400", description = "Некорректный URL или не удалось загрузить страницу"),
+        @ApiResponse(responseCode = "404", description = "Продукт не найден на странице")
+    })
+    public AmazonPageParser.ParseResult loadAmazonProduct(
+            @Parameter(description = "URL страницы Amazon", required = true) @RequestParam String url) {
+        log.info("Loading Amazon product from URL: {}", url);
+        
+        try {
+            AmazonPageParser.ParseResult result = amazonPageParser.parse(url);
+            
+            if (!result.isValid()) {
+                log.warn("Failed to parse Amazon page: {}", url);
+                throw new RuntimeException("Failed to parse Amazon page or product not found");
+            }
+            
+            log.info("Successfully loaded Amazon product: ASIN={}, title={}, price={}", 
+                    result.getAsin(), result.getTitle(), result.getPrice());
+            return result;
+        } catch (IOException e) {
+            log.error("Error loading Amazon product from URL: {}", url, e);
+            throw new RuntimeException("Failed to load Amazon product: " + e.getMessage(), e);
+        }
     }
 }
