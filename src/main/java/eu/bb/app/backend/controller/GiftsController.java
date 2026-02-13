@@ -90,12 +90,20 @@ public class GiftsController {
     }
     
     @GetMapping("/events/{eventId}/gifts")
-    @Operation(summary = "Получить список подарков события", description = "Возвращает все подарки, связанные с указанным событием, включая их категории")
+    @Operation(summary = "Получить список подарков события", description = "Возвращает все подарки, связанные с указанным событием, включая их категории. Можно отфильтровать по категории через query параметр categoryId")
     @ApiResponse(responseCode = "200", description = "Список подарков успешно получен")
-    public List<Gift> list(@Parameter(description = "ID события", required = true) @PathVariable Long eventId) {
-        log.debug("Getting gifts for event ID: {}", eventId);
-        List<Gift> giftList = gifts.findByEventIdWithCategories(eventId);
-        log.info("Retrieved {} gifts for event ID: {}", giftList.size(), eventId);
+    public List<Gift> list(
+            @Parameter(description = "ID события", required = true) @PathVariable Long eventId,
+            @Parameter(description = "ID категории для фильтрации (опционально)") @RequestParam(required = false) Long categoryId) {
+        log.debug("Getting gifts for event ID: {}, categoryId: {}", eventId, categoryId);
+        List<Gift> giftList;
+        if (categoryId != null) {
+            giftList = gifts.findByEventIdAndCategoryIdWithCategories(eventId, categoryId);
+            log.info("Retrieved {} gifts for event ID: {} filtered by category ID: {}", giftList.size(), eventId, categoryId);
+        } else {
+            giftList = gifts.findByEventIdWithCategories(eventId);
+            log.info("Retrieved {} gifts for event ID: {}", giftList.size(), eventId);
+        }
         return giftList;
     }
     

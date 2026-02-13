@@ -7,5 +7,6 @@ import java.util.Optional;
 
 public interface GiftCategoryRepository extends JpaRepository<GiftCategory, Long> {
     List<GiftCategory> findAllByOrderByNameAsc();
+    List<GiftCategory> findByHiddenFalseOrderByNameAsc();
     Optional<GiftCategory> findByName(String name);
 }

@@ -15,6 +15,10 @@ public class GiftCategory {
     @Column(nullable = false, unique = true)
     private String name;
     
+    @Column(nullable = false)
+    @JsonIgnore // Не возвращаем поле hidden в API
+    private Boolean hidden = false;
+    
     @ManyToMany(mappedBy = "categories")
     @JsonIgnore // Игнорируем обратную связь при сериализации, чтобы избежать циклических ссылок
     private Set<Gift> gifts = new HashSet<>();
@@ -33,6 +37,14 @@ public class GiftCategory {
     
     public void setName(String name) {
         this.name = name;
+    }
+    
+    public Boolean getHidden() {
+        return hidden;
+    }
+    
+    public void setHidden(Boolean hidden) {
+        this.hidden = hidden;
     }
     
     public Set<Gift> getGifts() {

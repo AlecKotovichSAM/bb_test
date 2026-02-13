@@ -289,6 +289,50 @@ class GiftsControllerIntegrationTest {
     }
     
     @Test
+    void testCreateGift_WithNewCategoryByName() throws Exception {
+        // Given - создаем подарок с новой категорией по имени
+        Gift gift = new Gift();
+        gift.setTitle("Test Gift with New Category");
+        gift.setDescription("Test Description");
+        gift.setPrice(new BigDecimal("29.99"));
+        gift.setStatus("open");
+        
+        // Создаем категорию только с именем (без ID)
+        GiftCategory newCategory = new GiftCategory();
+        newCategory.setName("New Test Category");
+        Set<GiftCategory> categories = new HashSet<>();
+        categories.add(newCategory);
+        gift.setCategories(categories);
+
+        // When & Then - категория должна быть создана автоматически
+        mockMvc.perform(post("/api/events/{eventId}/gifts", testEvent.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(gift)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.title").value("Test Gift with New Category"))
+                .andExpect(jsonPath("$.categories").isArray())
+                .andExpect(jsonPath("$.categories.length()").value(1))
+                .andExpect(jsonPath("$.categories[0].name").value("New Test Category"))
+                .andExpect(jsonPath("$.categories[0].id").exists());
+
+        // Verify in database - проверяем что категория создана и связана с подарком
+        Gift saved = giftRepository.findByIdWithCategories(
+                giftRepository.findAll().stream()
+                        .filter(g -> "Test Gift with New Category".equals(g.getTitle()))
+                        .findFirst()
+                        .orElseThrow()
+                        .getId()
+        ).orElseThrow();
+        assertThat(saved.getCategories()).hasSize(1);
+        assertThat(saved.getCategories().iterator().next().getName()).isEqualTo("New Test Category");
+        
+        // Проверяем что категория создана в БД и имеет hidden = false
+        GiftCategory createdCategory = categoryRepository.findByName("New Test Category").orElseThrow();
+        assertThat(createdCategory.getHidden()).isFalse();
+    }
+    
+    @Test
     void testUpdateGift_WithCategories() throws Exception {
         // Given
         Gift gift = createTestGift("Gift to Update");
@@ -320,6 +364,61 @@ class GiftsControllerIntegrationTest {
         assertThat(updated.getCategories().iterator().next().getName()).isEqualTo("Sport");
     }
 
+    @Test
+    void testListGifts_FilterByCategory() throws Exception {
+        // Given - создаем подарки с разными категориями
+        GiftCategory legoCategory = categoryRepository.findByName("Lego")
+                .orElseThrow(() -> new RuntimeException("Lego category not found"));
+        GiftCategory sportCategory = categoryRepository.findByName("Sport")
+                .orElseThrow(() -> new RuntimeException("Sport category not found"));
+        
+        // Создаем первый подарок с категорией Lego
+        Gift gift1 = new Gift();
+        gift1.setEventId(testEvent.getId());
+        gift1.setTitle("LEGO Gift");
+        gift1.setPrice(new BigDecimal("50.00"));
+        gift1.setStatus("open");
+        Set<GiftCategory> categories1 = new HashSet<>();
+        categories1.add(legoCategory);
+        gift1.setCategories(categories1);
+        giftRepository.save(gift1);
+        
+        // Создаем второй подарок с категорией Sport
+        Gift gift2 = new Gift();
+        gift2.setEventId(testEvent.getId());
+        gift2.setTitle("Sport Gift");
+        gift2.setPrice(new BigDecimal("30.00"));
+        gift2.setStatus("open");
+        Set<GiftCategory> categories2 = new HashSet<>();
+        categories2.add(sportCategory);
+        gift2.setCategories(categories2);
+        giftRepository.save(gift2);
+        
+        // When & Then - получаем все подарки
+        mockMvc.perform(get("/api/events/{eventId}/gifts", testEvent.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(2));
+        
+        // When & Then - фильтруем по категории Lego
+        mockMvc.perform(get("/api/events/{eventId}/gifts", testEvent.getId())
+                        .param("categoryId", legoCategory.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].title").value("LEGO Gift"))
+                .andExpect(jsonPath("$[0].categories[0].name").value("Lego"));
+        
+        // When & Then - фильтруем по категории Sport
+        mockMvc.perform(get("/api/events/{eventId}/gifts", testEvent.getId())
+                        .param("categoryId", sportCategory.getId().toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].title").value("Sport Gift"))
+                .andExpect(jsonPath("$[0].categories[0].name").value("Sport"));
+    }
+    
     @Test
     void testDeleteGift() throws Exception {
         // Given

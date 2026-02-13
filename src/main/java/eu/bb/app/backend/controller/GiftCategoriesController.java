@@ -22,12 +22,12 @@ public class GiftCategoriesController {
     }
     
     @GetMapping("/categories")
-    @Operation(summary = "Получить список всех категорий", description = "Возвращает все категории подарков, отсортированные по имени")
+    @Operation(summary = "Получить список всех категорий", description = "Возвращает все не скрытые категории подарков, отсортированные по имени")
     @ApiResponse(responseCode = "200", description = "Список категорий успешно получен")
     public List<GiftCategory> list() {
-        log.debug("Getting all gift categories");
-        List<GiftCategory> categories = categoryRepository.findAllByOrderByNameAsc();
-        log.info("Retrieved {} gift categories", categories.size());
+        log.debug("Getting all non-hidden gift categories");
+        List<GiftCategory> categories = categoryRepository.findByHiddenFalseOrderByNameAsc();
+        log.info("Retrieved {} non-hidden gift categories", categories.size());
         return categories;
     }
 }

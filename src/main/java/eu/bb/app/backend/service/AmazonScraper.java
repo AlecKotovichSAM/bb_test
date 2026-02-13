@@ -86,9 +86,13 @@ public class AmazonScraper {
 	        // Подробное описание (если есть отдельный блок)
 	        String longDescription = doc.select("#productDescription").text();
 
+	        // Категория из тега title (формат: Amazon.de: Beauty</title>)
+	        String category = extractCategory(doc);
+
 	        System.out.println("Title: " + (title.isBlank() ? "<not found>" : title));
 	        System.out.println("Price: " + (isBlank(price) ? "<not found>" : price));
 	        System.out.println("Image: " + (isBlank(image) ? "<not found>" : image));
+	        System.out.println("Category: " + (isBlank(category) ? "<not found>" : category));
 	        System.out.println("Short Description:\n" + (isBlank(shortDescription) ? "<not found>" : shortDescription));
 	        if (!isBlank(longDescription)) {
 	            System.out.println("\nLong Description:\n" + longDescription);
@@ -128,6 +132,51 @@ public class AmazonScraper {
 
 	    private static boolean isBlank(String s) {
 	        return s == null || s.trim().isEmpty();
+	    }
+	    
+	    /**
+	     * Извлекает категорию продукта из тега title.
+	     * Формат: Amazon.de: Beauty</title> - извлекает "Beauty"
+	     */
+	    private static String extractCategory(Document doc) {
+	        Element titleElement = doc.selectFirst("title");
+	        if (titleElement == null) {
+	            return null;
+	        }
+	        
+	        String titleText = titleElement.text();
+	        if (isBlank(titleText)) {
+	            return null;
+	        }
+	        
+	        // Паттерн для поиска категории после двоеточия: Amazon.de: Beauty или Amazon.com: Electronics
+	        Pattern categoryPattern = Pattern.compile("Amazon[^:]*:\\s*([^:-]+?)(?:\\s*[-:]\\s*Amazon.*)?$");
+	        Matcher matcher = categoryPattern.matcher(titleText);
+	        
+	        if (matcher.find()) {
+	            String category = matcher.group(1).trim();
+	            
+	            // Убираем суффиксы типа " - Amazon.de" или " : Amazon.de"
+	            category = category.replaceAll("\\s*-\\s*Amazon.*$", "");
+	            category = category.replaceAll("\\s*:\\s*Amazon.*$", "");
+	            category = category.trim();
+	            
+	            if (!category.isEmpty() && !category.equalsIgnoreCase("Amazon")) {
+	                return category;
+	            }
+	        }
+	        
+	        // Альтернативный паттерн: ищем текст после последнего двоеточия перед " - " или " : "
+	        Pattern altPattern = Pattern.compile(".*?:\\s*([^:-]+?)(?:\\s*[-:]\\s*Amazon.*)?$");
+	        Matcher altMatcher = altPattern.matcher(titleText);
+	        if (altMatcher.find()) {
+	            String category = altMatcher.group(1).trim();
+	            if (!category.isEmpty() && !category.equalsIgnoreCase("Amazon")) {
+	                return category;
+	            }
+	        }
+	        
+	        return null;
 	    }
 	    
 	}

@@ -17,4 +17,8 @@ public interface GiftRepository extends JpaRepository<Gift, Long> {
     // Загрузка подарков события с категориями
     @Query("SELECT DISTINCT g FROM Gift g LEFT JOIN FETCH g.categories WHERE g.eventId = :eventId")
     List<Gift> findByEventIdWithCategories(@Param("eventId") Long eventId);
+    
+    // Загрузка подарков события с категориями, отфильтрованных по категории
+    @Query("SELECT DISTINCT g FROM Gift g LEFT JOIN FETCH g.categories c WHERE g.eventId = :eventId AND c.id = :categoryId")
+    List<Gift> findByEventIdAndCategoryIdWithCategories(@Param("eventId") Long eventId, @Param("categoryId") Long categoryId);
 }

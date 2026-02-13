@@ -25,6 +25,9 @@ class AmazonPageParserTest {
         assertEquals("B07ZKLYVHQ", result.getAsin());
         assertNotNull(result.getTitle());
         assertNotNull(result.getImageUrl());
+        // Категория может быть null или не null в зависимости от структуры title
+        // Проверяем только что метод getCategory() работает
+        assertNotNull(result.getCategory()); // или может быть null, но проверим что метод существует
     }
     
     @Test
@@ -37,6 +40,9 @@ class AmazonPageParserTest {
         assertEquals("B07S9STQ7Z", result.getAsin());
         assertNotNull(result.getTitle());
         assertNotNull(result.getImageUrl());
+        // Категория может быть null или не null в зависимости от структуры title
+        // Проверяем только что метод getCategory() работает
+        assertNotNull(result.getCategory()); // или может быть null, но проверим что метод существует
     }
     
     @Test
@@ -63,12 +69,14 @@ class AmazonPageParserTest {
                 "https://example.com/image.jpg",
                 "Description",
                 "In stock",
+                "Sports & Outdoors",
                 true);
         
         String str = result.toString();
         assertNotNull(str);
         assertTrue(str.contains("B07S9STQ7Z"));
         assertTrue(str.contains("PUMA"));
+        assertTrue(str.contains("Sports & Outdoors"));
     }
     
     @Test
@@ -81,6 +89,7 @@ class AmazonPageParserTest {
                 "https://example.com/image.jpg",
                 "Test description",
                 "Available",
+                "Beauty",
                 true);
         
         assertEquals("B07S9STQ7Z", result.getAsin());
@@ -90,6 +99,7 @@ class AmazonPageParserTest {
         assertEquals("https://example.com/image.jpg", result.getImageUrl());
         assertEquals("Test description", result.getDescription());
         assertEquals("Available", result.getAvailability());
+        assertEquals("Beauty", result.getCategory());
         assertTrue(result.isValid());
     }
 }

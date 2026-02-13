@@ -108,10 +108,11 @@ public class AmazonPageParser {
         private final String imageUrl;
         private final String description;
         private final String availability;
+        private final String category;
         private final boolean isValid;
         
         public ParseResult(String asin, String title, BigDecimal price, String currency, 
-                          String imageUrl, String description, String availability, boolean isValid) {
+                          String imageUrl, String description, String availability, String category, boolean isValid) {
             this.asin = asin;
             this.title = title;
             this.price = price;
@@ -119,6 +120,7 @@ public class AmazonPageParser {
             this.imageUrl = imageUrl;
             this.description = description;
             this.availability = availability;
+            this.category = category;
             this.isValid = isValid;
         }
         
@@ -150,14 +152,18 @@ public class AmazonPageParser {
             return availability;
         }
         
+        public String getCategory() {
+            return category;
+        }
+        
         public boolean isValid() {
             return isValid;
         }
         
         @Override
         public String toString() {
-            return String.format("ParseResult{asin='%s', title='%s', price=%s %s, imageUrl='%s', isValid=%s}",
-                    asin, title, price, currency, imageUrl, isValid);
+            return String.format("ParseResult{asin='%s', title='%s', price=%s %s, imageUrl='%s', category='%s', isValid=%s}",
+                    asin, title, price, currency, imageUrl, category, isValid);
         }
     }
     
@@ -170,7 +176,7 @@ public class AmazonPageParser {
      */
     public ParseResult parse(String url) throws IOException {
         if (url == null || url.trim().isEmpty()) {
-            return new ParseResult(null, null, null, null, null, null, null, false);
+            return new ParseResult(null, null, null, null, null, null, null, null, false);
         }
         
         log.debug("Parsing Amazon page: {}", url);
@@ -220,15 +226,20 @@ public class AmazonPageParser {
         String availability = extractAvailability(doc);
         log.debug("Availability extraction took {} ms", System.currentTimeMillis() - time8);
         
+        // Извлекаем категорию
+        long time9 = System.currentTimeMillis();
+        String category = extractCategory(doc);
+        log.debug("Category extraction took {} ms, category={}", System.currentTimeMillis() - time9, category);
+        
         // Результат валиден, если найдено хотя бы название или ASIN
         boolean isValid = (asin != null && !asin.isEmpty()) || (title != null && !title.isEmpty());
         
         long totalTime = System.currentTimeMillis() - startTime;
         log.info("Total parsing time: {} ms (Selenium: {} ms, Parsing: {} ms)", 
                 totalTime, seleniumTime, totalTime - seleniumTime);
-        log.debug("Parsed result: {}", new ParseResult(asin, title, price, currency, imageUrl, description, availability, isValid));
+        log.debug("Parsed result: {}", new ParseResult(asin, title, price, currency, imageUrl, description, availability, category, isValid));
         
-        return new ParseResult(asin, title, price, currency, imageUrl, description, availability, isValid);
+        return new ParseResult(asin, title, price, currency, imageUrl, description, availability, category, isValid);
     }
     
     /**
@@ -547,6 +558,55 @@ public class AmazonPageParser {
                 return availability.trim();
             }
         }
+        return null;
+    }
+    
+    /**
+     * Извлекает категорию продукта из тега title.
+     * Формат: Amazon.de: Beauty</title> - извлекает "Beauty"
+     */
+    private String extractCategory(Document doc) {
+        Element titleElement = doc.selectFirst("title");
+        if (titleElement == null) {
+            return null;
+        }
+        
+        String titleText = titleElement.text();
+        if (titleText == null || titleText.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Паттерн для поиска категории после двоеточия: Amazon.de: Beauty или Amazon.com: Electronics
+        // Ищем формат "Amazon.*: Category" или просто ": Category"
+        Pattern categoryPattern = Pattern.compile("Amazon[^:]*:\\s*([^:-]+?)(?:\\s*[-:]\\s*Amazon.*)?$");
+        Matcher matcher = categoryPattern.matcher(titleText);
+        
+        if (matcher.find()) {
+            String category = matcher.group(1).trim();
+            
+            // Убираем суффиксы типа " - Amazon.de" или " : Amazon.de"
+            category = category.replaceAll("\\s*-\\s*Amazon.*$", "");
+            category = category.replaceAll("\\s*:\\s*Amazon.*$", "");
+            category = category.trim();
+            
+            if (!category.isEmpty() && !category.equalsIgnoreCase("Amazon")) {
+                log.debug("Extracted category from title '{}': {}", titleText, category);
+                return category;
+            }
+        }
+        
+        // Альтернативный паттерн: ищем текст после последнего двоеточия перед " - " или " : "
+        Pattern altPattern = Pattern.compile(".*?:\\s*([^:-]+?)(?:\\s*[-:]\\s*Amazon.*)?$");
+        Matcher altMatcher = altPattern.matcher(titleText);
+        if (altMatcher.find()) {
+            String category = altMatcher.group(1).trim();
+            if (!category.isEmpty() && !category.equalsIgnoreCase("Amazon")) {
+                log.debug("Extracted category (alternative) from title '{}': {}", titleText, category);
+                return category;
+            }
+        }
+        
+        log.debug("Could not extract category from title: {}", titleText);
         return null;
     }
 }
